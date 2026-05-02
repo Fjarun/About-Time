@@ -504,12 +504,7 @@ def toggle_notify():
 def _update_notify_btn():
     notify_btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if _notify_enabled else "transparent")
 
-_notify_tip = ctk.CTkLabel(
-    root, text="",
-    fg_color=("#4a4a4a", "#2a2a2a"),
-    corner_radius=4,
-    font=ctk.CTkFont(size=16),
-)
+_notify_tip = _make_tip()
 
 def _show_notify_tip(event=None):
     _notify_tip.configure(text="Notifications: On" if _notify_enabled else "Notifications: Off")
