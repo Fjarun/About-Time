@@ -492,6 +492,42 @@ pin_btn.bind("<Enter>", _show_tip)
 pin_btn.bind("<Leave>", _hide_tip)
 _update_pin()
 
+# ── Notification toggle ────────────────────────────────────────────────────────
+def toggle_notify():
+    global _notify_enabled
+    _notify_enabled = not _notify_enabled
+    _update_notify_btn()
+    if _notify_tip.winfo_ismapped():
+        _show_notify_tip()
+
+def _update_notify_btn():
+    notify_btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if _notify_enabled else "transparent")
+
+_notify_tip = ctk.CTkLabel(
+    root, text="",
+    fg_color=("#4a4a4a", "#2a2a2a"),
+    corner_radius=4,
+    font=ctk.CTkFont(size=20),
+)
+
+def _show_notify_tip(event=None):
+    _notify_tip.configure(text="Notifications: On" if _notify_enabled else "Notifications: Off")
+    _notify_tip.place(x=62, y=7)
+
+def _hide_notify_tip(event=None):
+    _notify_tip.place_forget()
+
+notify_btn = ctk.CTkButton(
+    root, text="⚠", width=26, height=26,
+    font=ctk.CTkFont(size=14),
+    fg_color="transparent",
+    hover_color=("#3a3a4a", "#3a3a4a"),
+    command=toggle_notify,
+)
+notify_btn.place(x=32, y=4)
+notify_btn.bind("<Enter>", _show_notify_tip)
+notify_btn.bind("<Leave>", _hide_notify_tip)
+
 # ── Sound selector ─────────────────────────────────────────────────────────────
 _sound_btns = {}
 
