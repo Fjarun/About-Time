@@ -406,12 +406,14 @@ def _fit_window():
     root.geometry(f"{root.winfo_width()}x{target}")
 
 # ── Height-snap on resize ──────────────────────────────────────────────────────
+def _snap_candidates():
+    return [h for h in (_snap_h(i) for i in range(1, len(timers) + 1)) if h]
+
 def _on_resize(event):
     global _resize_pending
     if event.widget is not root or _resize_pending or not _snap_heights:
         return
-    candidates = [_snap_h(i) for i in range(1, len(timers) + 1)]
-    candidates = [h for h in candidates if h]
+    candidates = _snap_candidates()
     if not candidates:
         return
     target = min(candidates, key=lambda h: abs(h - event.height))
@@ -422,8 +424,7 @@ def _on_resize(event):
 def _do_snap():
     global _resize_pending
     _resize_pending = False
-    candidates = [_snap_h(i) for i in range(1, len(timers) + 1)]
-    candidates = [h for h in candidates if h]
+    candidates = _snap_candidates()
     if not candidates:
         return
     current_h = root.winfo_height()
