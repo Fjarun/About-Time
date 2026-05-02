@@ -527,6 +527,13 @@ notify_btn.bind("<Leave>", _hide_notify_tip)
 
 # ── Sound selector ─────────────────────────────────────────────────────────────
 _sound_btns = {}
+_sound_labels = {
+    "short":  "Single chime",
+    "medium": "Rising chime",
+    "long":   "Task complete",
+    "mute":   "Silence alarms",
+}
+_sound_tip_y = {"short": 7, "medium": 35, "long": 63, "mute": 91}
 
 def _set_sound(mode):
     global _sound_mode
@@ -534,6 +541,21 @@ def _set_sound(mode):
     for m, btn in _sound_btns.items():
         btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if m == mode else "transparent")
     beep()
+
+_sound_tip = ctk.CTkLabel(
+    root, text="",
+    fg_color=("#4a4a4a", "#2a2a2a"),
+    corner_radius=4,
+    font=ctk.CTkFont(size=20),
+)
+
+def _show_sound_tip(mode, event=None):
+    _sound_tip.configure(text=_sound_labels[mode])
+    _sound_tip.place(relx=1.0, anchor="ne", x=-30, y=_sound_tip_y[mode])
+    _sound_tip.lift()
+
+def _hide_sound_tip(event=None):
+    _sound_tip.place_forget()
 
 sound_frame = ctk.CTkFrame(root, fg_color="transparent")
 sound_frame.place(relx=1.0, anchor="ne", x=-2, y=2)
@@ -553,6 +575,8 @@ for _sym, _mode, _row, _col in [
         command=lambda m=_mode: _set_sound(m),
     )
     _btn.grid(row=_row, column=_col, padx=1, pady=1)
+    _btn.bind("<Enter>", lambda e, m=_mode: _show_sound_tip(m))
+    _btn.bind("<Leave>", _hide_sound_tip)
     _sound_btns[_mode] = _btn
 
 _sound_btns["short"].configure(fg_color=("#1F6AA5", "#1F6AA5"))
