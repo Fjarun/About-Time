@@ -566,7 +566,7 @@ vol_up_btn = ctk.CTkButton(
     font=ctk.CTkFont(size=11),
     fg_color="transparent",
     hover_color=("#3a3a4a", "#3a3a4a"),
-    command=lambda: _change_volume(_VOL_STEP),
+    command=lambda: _change_volume(5),
 )
 vol_up_btn.place(x=4, y=60)
 vol_up_btn.bind("<Enter>", _show_vol_tip)
