@@ -1,6 +1,6 @@
 # It's About Time - Always-on-Top Timer App
 
-A free Windows desktop timer app that stays on top of all your other windows — so your countdowns are always visible, no matter what you're working in. Run up to 5 named task timers simultaneously, each with its own label and countdown. Perfect for productivity workflows where you need a floating timer that doesn't disappear behind your browser or IDE.
+A free Windows desktop timer app that stays on top of all your other windows — so your countdowns are always visible, no matter what you're working in. Run up to 5 named task timers simultaneously, each with its own label and countdown, and choose from an optional family of notification sounds when each one finishes. Perfect for productivity workflows where you need a floating timer that doesn't disappear behind your browser or IDE.
 
 ## Features
 
