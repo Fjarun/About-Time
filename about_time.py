@@ -39,12 +39,22 @@ if sys.platform == "win32":
             struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, int(amp * 32767 * val / norm))))
         return bytes(buf)
 
+    def _apply_reverb(raw, rate=44100, delay_ms=70, echo_amp=0.30, tail_ms=350):
+        n = len(raw) // 2
+        tail = int(rate * tail_ms / 1000)
+        delay = int(rate * delay_ms / 1000)
+        samples = list(struct.unpack(f"<{n}h", raw)) + [0] * tail
+        for i in range(delay, len(samples)):
+            val = samples[i] + int(samples[i - delay] * echo_amp)
+            samples[i] = max(-32767, min(32767, val))
+        return struct.pack(f"<{len(samples)}h", *samples)
+
     # ♪ single note: A5 — middle note of the full pattern
-    _WAV_SHORT  = _wrap_wav(_sine_segment(880, 0.4, 0.18))
+    _WAV_SHORT  = _wrap_wav(_apply_reverb(_sine_segment(880, 0.4, 0.18)))
     # ♫ two-note ascending: D5 → A5 — first two notes of the full pattern
-    _WAV_MEDIUM = _wrap_wav(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.35, 0.18))
+    _WAV_MEDIUM = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.35, 0.18)))
     # ♬ three-note ascending: D5 → A5 → D6
-    _WAV_LONG   = _wrap_wav(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.15, 0.12) + _sine_segment(1175, 0.25, 0.18, fade_ms=10))
+    _WAV_LONG   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.15, 0.12) + _sine_segment(1175, 0.25, 0.18, fade_ms=10)))
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
