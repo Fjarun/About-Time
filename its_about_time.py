@@ -54,12 +54,25 @@ else:
         print("\a", end="", flush=True)
 
 _sound_mode = "short"
+_notify_enabled = False
 
 def beep():
     if _sound_mode == "mute":
         return
     wav = {"short": _WAV_SHORT, "medium": _WAV_MEDIUM, "long": _WAV_LONG}[_sound_mode]
     threading.Thread(target=_play, args=(wav,), daemon=True).start()
+
+def notify(title):
+    if not _notify_enabled or sys.platform != "win32":
+        return
+    def _send():
+        toast = Notification(
+            app_id="It's About Time",
+            title="Timer finished",
+            msg=f"Your timer '{title}' has finished.",
+        )
+        toast.show()
+    threading.Thread(target=_send, daemon=True).start()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def fmt(seconds):
