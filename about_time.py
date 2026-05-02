@@ -456,10 +456,13 @@ add_btn = ctk.CTkButton(
 )
 add_btn.pack()
 
+_CLOCK_SYMS = {1: "◷", 2: "◶", 3: "◵", 4: "◴"}
+
 def _update_add_btn():
     if len(timers) >= MAX_TIMERS:
         add_btn_frame.pack_forget()
     else:
+        add_btn.configure(text=f"{_CLOCK_SYMS.get(len(timers), '◷')} Add timer")
         add_btn_frame.pack(fill="x", pady=(0, 6))
 
 # ── Pin / Always on top ────────────────────────────────────────────────────────
