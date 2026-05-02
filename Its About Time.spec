@@ -29,7 +29,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Its About Time',
+    name='About Time',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
