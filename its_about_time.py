@@ -558,7 +558,7 @@ for _sym, _mode, _row, _col in [
 _sound_btns["short"].configure(fg_color=("#1F6AA5", "#1F6AA5"))
 
 # ── Init ───────────────────────────────────────────────────────────────────────
-add_timer(deletable=False, initial_title="It's About Time")
+add_timer(deletable=False, initial_title="About Time")
 root.bind("<Configure>", _on_resize)
 
 root.mainloop()
