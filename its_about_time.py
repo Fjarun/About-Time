@@ -543,9 +543,9 @@ sound_frame.place(relx=1.0, anchor="ne", x=-2, y=2)
 
 for _sym, _mode, _row, _col in [
     ("♪", "short",  0, 0),
-    ("♫", "medium", 0, 1),
-    ("♬", "long",   1, 0),
-    ("⊘", "mute",   1, 1),
+    ("♫", "medium", 1, 0),
+    ("♬", "long",   2, 0),
+    ("⊘", "mute",   3, 0),
 ]:
     _btn = ctk.CTkButton(
         sound_frame, text=_sym,
