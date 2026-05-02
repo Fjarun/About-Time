@@ -13,12 +13,14 @@ if sys.platform == "win32":
             b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
             b"data", len(raw)) + raw
 
-    def _sine_segment(freq, duration, tau, volume=0.5, rate=44100):
+    def _sine_segment(freq, duration, tau, volume=0.5, rate=44100, fade_ms=0):
         n = int(rate * duration)
+        fade_samples = int(rate * fade_ms / 1000)
         buf = bytearray(n * 2)
         for i in range(n):
             t = i / rate
-            val = int(volume * math.exp(-t / tau) * 32767 * math.sin(2 * math.pi * freq * t))
+            fade = (n - i) / fade_samples if fade_samples and i >= n - fade_samples else 1.0
+            val = int(volume * math.exp(-t / tau) * 32767 * math.sin(2 * math.pi * freq * t) * fade)
             struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, val)))
         return bytes(buf)
 
