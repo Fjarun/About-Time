@@ -469,6 +469,37 @@ pin_btn.bind("<Enter>", _show_tip)
 pin_btn.bind("<Leave>", _hide_tip)
 _update_pin()
 
+# ── Sound selector ─────────────────────────────────────────────────────────────
+_sound_btns = {}
+
+def _set_sound(mode):
+    global _sound_mode
+    _sound_mode = mode
+    for m, btn in _sound_btns.items():
+        btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if m == mode else "transparent")
+
+sound_frame = ctk.CTkFrame(root, fg_color="transparent")
+sound_frame.place(relx=1.0, anchor="ne", x=-2, y=2)
+
+for _sym, _mode, _row, _col in [
+    ("♪", "short",  0, 0),
+    ("♫", "medium", 0, 1),
+    ("♬", "long",   1, 0),
+    ("⊘", "mute",   1, 1),
+]:
+    _btn = ctk.CTkButton(
+        sound_frame, text=_sym,
+        width=26, height=26,
+        font=ctk.CTkFont(size=14),
+        fg_color="transparent",
+        hover_color=("#3a3a4a", "#3a3a4a"),
+        command=lambda m=_mode: _set_sound(m),
+    )
+    _btn.grid(row=_row, column=_col, padx=1, pady=1)
+    _sound_btns[_mode] = _btn
+
+_set_sound("short")
+
 # ── Init ───────────────────────────────────────────────────────────────────────
 add_timer(deletable=False, initial_title="It's About Time")
 root.bind("<Configure>", _on_resize)
