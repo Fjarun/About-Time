@@ -452,6 +452,7 @@ add_btn = ctk.CTkButton(
     add_btn_frame,
     text="+ Add timer",
     width=120,
+    font=ctk.CTkFont(size=16),
     command=lambda: add_timer(deletable=True),
 )
 add_btn.pack()
