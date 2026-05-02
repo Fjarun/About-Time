@@ -11,6 +11,6 @@ A free Windows desktop timer app that stays on top of all your other windows —
 - Timers start automatically when a time is entered
 - Click the countdown display to edit the time at any point
 - Flexible input: plain numbers assumed as minutes, or suffix with `s`, `m`, or `h`
-- **3 notification chime options** — choose a short, medium, or long alert sound to play when any timer finishes
+- **Custom notification chimes** — choose short, medium, or long from a family of matched notification sounds, all designed to feel consistent
 - **Mute option** — silence all timer alerts for distraction-free or shared-space use
 - Sound selector always visible, with instant preview on click so you know exactly what you're setting
