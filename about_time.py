@@ -27,18 +27,6 @@ if sys.platform == "win32":
             struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, val)))
         return bytes(buf)
 
-    def _bell_segment(fund=784, duration=0.8, tau=0.3, volume=0.5, rate=44100):
-        partials = [(fund, 1.0), (fund * 2.76, 0.4), (fund * 5.4, 0.15)]
-        norm = sum(a for _, a in partials)
-        n = int(rate * duration)
-        buf = bytearray(n * 2)
-        for i in range(n):
-            t = i / rate
-            amp = volume * math.exp(-t / tau)
-            val = sum(a * math.sin(2 * math.pi * f * t) for f, a in partials)
-            struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, int(amp * 32767 * val / norm))))
-        return bytes(buf)
-
     def _apply_reverb(raw, rate=44100, delay_ms=70, echo_amp=0.30, tail_ms=350):
         n = len(raw) // 2
         tail = int(rate * tail_ms / 1000)
