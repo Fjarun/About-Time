@@ -519,7 +519,7 @@ def _hide_notify_tip(event=None):
 
 notify_btn = ctk.CTkButton(
     root, text="⚠", width=26, height=26,
-    font=ctk.CTkFont(size=14),
+    font=ctk.CTkFont(size=11),
     fg_color="transparent",
     hover_color=("#3a3a4a", "#3a3a4a"),
     command=toggle_notify,
