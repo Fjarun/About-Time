@@ -7,35 +7,39 @@ import re
 if sys.platform == "win32":
     import winsound, struct, math
 
-    def _make_wav(freq=880, duration=0.4, volume=0.5, rate=44100):
+    def _wrap_wav(raw, rate=44100):
+        return struct.pack("<4sI4s4sIHHIIHH4sI",
+            b"RIFF", 36 + len(raw), b"WAVE",
+            b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
+            b"data", len(raw)) + raw
+
+    def _sine_segment(freq, duration, tau, volume=0.5, rate=44100):
         n = int(rate * duration)
-        samples = b"".join(
-            struct.pack("<h", int(volume * 32767 * math.sin(2 * math.pi * freq * i / rate)))
-            for i in range(n)
-        )
-        header = struct.pack("<4sI4s4sIHHIIHH4sI",
-            b"RIFF", 36 + len(samples), b"WAVE",
-            b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
-            b"data", len(samples))
-        return header + samples
+        buf = bytearray(n * 2)
+        for i in range(n):
+            t = i / rate
+            val = int(volume * math.exp(-t / tau) * 32767 * math.sin(2 * math.pi * freq * t))
+            struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, val)))
+        return bytes(buf)
 
-    def _make_wav_notes(notes, rate=44100):
-        all_samples = b""
-        for freq, duration, volume in notes:
-            n = int(rate * duration)
-            all_samples += b"".join(
-                struct.pack("<h", int(volume * 32767 * math.sin(2 * math.pi * freq * i / rate)))
-                for i in range(n)
-            )
-        header = struct.pack("<4sI4s4sIHHIIHH4sI",
-            b"RIFF", 36 + len(all_samples), b"WAVE",
-            b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
-            b"data", len(all_samples))
-        return header + all_samples
+    def _bell_segment(fund=784, duration=0.8, tau=0.3, volume=0.5, rate=44100):
+        partials = [(fund, 1.0), (fund * 2.76, 0.4), (fund * 5.4, 0.15)]
+        norm = sum(a for _, a in partials)
+        n = int(rate * duration)
+        buf = bytearray(n * 2)
+        for i in range(n):
+            t = i / rate
+            amp = volume * math.exp(-t / tau)
+            val = sum(a * math.sin(2 * math.pi * f * t) for f, a in partials)
+            struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, int(amp * 32767 * val / norm))))
+        return bytes(buf)
 
-    _WAV_SHORT  = _make_wav(freq=880, duration=0.4)
-    _WAV_MEDIUM = _make_wav(freq=880, duration=1.4)
-    _WAV_LONG   = _make_wav_notes([(880, 0.7, 0.5), (660, 0.7, 0.5), (440, 0.7, 0.5)])
+    # ♪ single chime at G5 with natural exponential decay
+    _WAV_SHORT  = _wrap_wav(_sine_segment(784, 0.4, 0.15))
+    # ♫ ascending perfect fifth: C5 → G5
+    _WAV_MEDIUM = _wrap_wav(_sine_segment(523, 0.15, 0.12) + _sine_segment(784, 0.35, 0.18))
+    # ♬ bell additive synthesis with inharmonic partials
+    _WAV_LONG   = _wrap_wav(_bell_segment())
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
