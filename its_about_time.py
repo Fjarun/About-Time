@@ -6,6 +6,7 @@ import re
 # ── Platform sound ─────────────────────────────────────────────────────────────
 if sys.platform == "win32":
     import winsound, struct, math
+
     def _make_wav(freq=880, duration=0.4, volume=0.5, rate=44100):
         n = int(rate * duration)
         samples = b"".join(
@@ -17,15 +18,39 @@ if sys.platform == "win32":
             b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
             b"data", len(samples))
         return header + samples
-    _BEEP_WAV = _make_wav()
-    def _beep():
-        winsound.PlaySound(_BEEP_WAV, winsound.SND_MEMORY)
+
+    def _make_wav_notes(notes, rate=44100):
+        all_samples = b""
+        for freq, duration, volume in notes:
+            n = int(rate * duration)
+            all_samples += b"".join(
+                struct.pack("<h", int(volume * 32767 * math.sin(2 * math.pi * freq * i / rate)))
+                for i in range(n)
+            )
+        header = struct.pack("<4sI4s4sIHHIIHH4sI",
+            b"RIFF", 36 + len(all_samples), b"WAVE",
+            b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
+            b"data", len(all_samples))
+        return header + all_samples
+
+    _WAV_SHORT  = _make_wav(freq=880, duration=0.4)
+    _WAV_MEDIUM = _make_wav(freq=880, duration=1.4)
+    _WAV_LONG   = _make_wav_notes([(880, 0.7, 0.5), (660, 0.7, 0.5), (440, 0.7, 0.5)])
+
+    def _play(wav):
+        winsound.PlaySound(wav, winsound.SND_MEMORY)
 else:
-    def _beep():
+    _WAV_SHORT = _WAV_MEDIUM = _WAV_LONG = None
+    def _play(wav):
         print("\a", end="", flush=True)
 
+_sound_mode = "short"
+
 def beep():
-    threading.Thread(target=_beep, daemon=True).start()
+    if _sound_mode == "mute":
+        return
+    wav = {"short": _WAV_SHORT, "medium": _WAV_MEDIUM, "long": _WAV_LONG}[_sound_mode]
+    threading.Thread(target=_play, args=(wav,), daemon=True).start()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 def fmt(seconds):
