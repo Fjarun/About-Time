@@ -628,7 +628,7 @@ for _sym, _mode, _row in [
         hover_color=("#3a3a4a", "#3a3a4a"),
         command=lambda m=_mode: _set_sound(m),
     )
-    _btn.grid(row=_row, column=_col, padx=1, pady=1)
+    _btn.grid(row=_row, column=0, padx=1, pady=1)
     _btn.bind("<Enter>", lambda e, m=_mode: _show_sound_tip(m))
     _btn.bind("<Leave>", _hide_sound_tip)
     _sound_btns[_mode] = _btn
