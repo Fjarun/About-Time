@@ -477,6 +477,7 @@ def _set_sound(mode):
     _sound_mode = mode
     for m, btn in _sound_btns.items():
         btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if m == mode else "transparent")
+    beep()
 
 sound_frame = ctk.CTkFrame(root, fg_color="transparent")
 sound_frame.place(relx=1.0, anchor="ne", x=-2, y=2)
