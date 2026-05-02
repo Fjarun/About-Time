@@ -594,12 +594,15 @@ _sound_labels = {
 }
 _sound_tip_y = {"short": 7, "medium": 35, "long": 63, "mute": 91}
 
-def _set_sound(mode):
-    global _sound_mode
+def _set_sound(mode, preview=True):
+    global _sound_mode, _last_sound
+    if mode != "mute":
+        _last_sound = mode
     _sound_mode = mode
     for m, btn in _sound_btns.items():
         btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if m == mode else "transparent")
-    beep()
+    if preview:
+        beep()
 
 _sound_tip = ctk.CTkLabel(
     root, text="",
