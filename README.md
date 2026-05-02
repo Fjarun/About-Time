@@ -1,13 +1,13 @@
-# It's About Time
+# It's About Time - Always-on-Top Timer App
 
-A Claude Code co-written desktop timer application built to serve as an always-on-top timer service.
+A free Windows desktop timer app that stays on top of all your other windows — so your countdowns are always visible, no matter what you're working in. Run up to 5 named task timers simultaneously, each with its own label and countdown. Perfect for productivity workflows where you need a floating timer that doesn't disappear behind your browser or IDE.
 
 ## Features
 
-- Supports up to 5 simultaneous timers
+- **Always-on-top toggle** — pin the window so it floats above everything else on screen
+- Run up to **5 simultaneous countdown timers** at once, each independently named and tracked
 - Custom time input per timer (maximum 99:59:59)
-- Custom naming on a per-timer basis
-- Always-on-top toggle pin to keep timers visible over other windows
+- Name each timer per task for easy multi-task tracking
 - Timers start automatically when a time is entered
 - Click the countdown display to edit the time at any point
-- Accepts numerical input assumed as minutes, or suffixed with s, m, or h for seconds, minutes, or hours
+- Flexible input: plain numbers assumed as minutes, or suffix with `s`, `m`, or `h`
