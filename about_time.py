@@ -288,7 +288,7 @@ class TimerWidget(ctk.CTkFrame):
         elif new_state == "paused":
             btn_w = max(40, (root.winfo_width() - 70) // 3)
             icon_font = ctk.CTkFont(size=16)
-            for btn, text in ((self.resume_btn, "▶"), (self.stop_btn, "⏹"), (self.restart_btn, "↺")):
+            for btn, text in ((self.stop_btn, "⏹"), (self.resume_btn, "▶"), (self.restart_btn, "↺")):
                 btn.configure(text=text, font=icon_font, width=btn_w)
                 btn.pack(side="left", padx=2, pady=2)
         elif new_state == "finished":
