@@ -329,7 +329,7 @@ class TimerWidget(ctk.CTkFrame):
 # ── Root window ────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
 root = ctk.CTk()
-root.title("It's About Time")
+root.title("About Time")
 root.resizable(True, True)
 root.minsize(250, 130)
 
