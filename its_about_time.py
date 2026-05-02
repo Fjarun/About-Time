@@ -512,7 +512,7 @@ _notify_tip = ctk.CTkLabel(
 
 def _show_notify_tip(event=None):
     _notify_tip.configure(text="Notifications: On" if _notify_enabled else "Notifications: Off")
-    _notify_tip.place(x=62, y=7)
+    _notify_tip.place(x=34, y=35)
 
 def _hide_notify_tip(event=None):
     _notify_tip.place_forget()
@@ -524,7 +524,7 @@ notify_btn = ctk.CTkButton(
     hover_color=("#3a3a4a", "#3a3a4a"),
     command=toggle_notify,
 )
-notify_btn.place(x=32, y=4)
+notify_btn.place(x=4, y=32)
 notify_btn.bind("<Enter>", _show_notify_tip)
 notify_btn.bind("<Leave>", _hide_notify_tip)
 
