@@ -525,12 +525,7 @@ notify_btn.bind("<Enter>", _show_notify_tip)
 notify_btn.bind("<Leave>", _hide_notify_tip)
 
 # ── Volume control ─────────────────────────────────────────────────────────────
-_vol_tip = ctk.CTkLabel(
-    root, text="",
-    fg_color=("#4a4a4a", "#2a2a2a"),
-    corner_radius=4,
-    font=ctk.CTkFont(size=16),
-)
+_vol_tip = _make_tip()
 
 def _show_vol_tip(event=None):
     _vol_tip.configure(text=f"Volume: {_vol_pct}%")
