@@ -9,7 +9,7 @@ datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
 
 
 a = Analysis(
-    ['its_about_time.py'],
+    ['about_time.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,
