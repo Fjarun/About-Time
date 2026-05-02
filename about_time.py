@@ -614,11 +614,11 @@ def _hide_sound_tip(event=None):
 sound_frame = ctk.CTkFrame(root, fg_color="transparent")
 sound_frame.place(relx=1.0, anchor="ne", x=-2, y=2)
 
-for _sym, _mode, _row, _col in [
-    ("♪", "short",  0, 0),
-    ("♫", "medium", 1, 0),
-    ("♬", "long",   2, 0),
-    ("⊘", "mute",   3, 0),
+for _sym, _mode, _row in [
+    ("♪", "short",  0),
+    ("♫", "medium", 1),
+    ("♬", "long",   2),
+    ("⊘", "mute",   3),
 ]:
     _btn = ctk.CTkButton(
         sound_frame, text=_sym,
