@@ -173,7 +173,7 @@ class TimerWidget(ctk.CTkFrame):
             placeholder_text="Click to enter title",
             border_width=0,
             fg_color="transparent",
-            font=ctk.CTkFont(size=14),
+            font=ctk.CTkFont(size=16),
             justify="center",
         )
         self.title_entry.pack(fill="x", padx=(36, 36), pady=(6, 0))
