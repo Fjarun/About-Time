@@ -14,3 +14,8 @@ A free Windows desktop timer app that stays on top of all your other windows —
 - **Custom notification chimes** — choose short, medium, or long from a family of matched notification sounds, all designed to feel consistent
 - **Mute option** — silence all timer alerts for distraction-free or shared-space use
 - Sound selector always visible, with instant preview on click so you know exactly what you're setting
+
+## Coming Soon
+
+- **Windows notification toggle** — opt-in desktop notifications when a timer finishes, even if the app is minimised
+- **Settings persistence** — your sound choice, always-on-top state, and other preferences remembered between sessions
