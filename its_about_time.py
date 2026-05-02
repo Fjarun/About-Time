@@ -217,13 +217,9 @@ class TimerWidget(ctk.CTkFrame):
             root.after_cancel(self.after_id)
             self.after_id = None
         self.remaining_seconds = self.duration_seconds
-        if self.state == "finished":
-            self.display_var.set(self.last_valid_display)
-            self._set_state("idle")
-        else:
-            self.display_var.set(fmt(self.remaining_seconds))
-            self._set_state("running")
-            self.after_id = root.after(1000, self._tick)
+        self.display_var.set(fmt(self.remaining_seconds))
+        self._set_state("running")
+        self.after_id = root.after(1000, self._tick)
 
     # ── State machine ──────────────────────────────────────────────────────────
     def _set_state(self, new_state):
@@ -273,7 +269,7 @@ class TimerWidget(ctk.CTkFrame):
         self.remaining_seconds = seconds
         self.last_valid_display = fmt(seconds)
         self.display_var.set(self.last_valid_display)
-        if self.state in ("running", "paused"):
+        if self.state in ("idle", "running", "paused"):
             if self.after_id:
                 root.after_cancel(self.after_id)
                 self.after_id = None
@@ -300,8 +296,20 @@ timers_frame.pack(fill="x")
 
 # Each entry is (separator_or_None, TimerWidget)
 timers = []
-_snap_heights = {}   # timer_count -> required window height
+_snap_heights = {}     # timer_count -> measured height (kept for calibration)
+_snap_unit = None      # height increment per timer, derived from first two measurements
+_snap_btn_offset = None  # button frame height removed at MAX_TIMERS, derived from h[5] measurement
 _resize_pending = False
+
+def _snap_h(n):
+    """Formula-based snap height for n timers; falls back to measured if uncalibrated."""
+    base = _snap_heights.get(1)
+    if base and _snap_unit:
+        h = base + (n - 1) * _snap_unit
+        if n == MAX_TIMERS and _snap_btn_offset is not None:
+            h -= _snap_btn_offset
+        return h
+    return _snap_heights.get(n)
 
 def add_timer(deletable=False, initial_title=""):
     if len(timers) >= MAX_TIMERS:
@@ -329,26 +337,39 @@ def remove_timer(tw):
             tw.destroy()
             timers.pop(i)
             break
-    for k in list(_snap_heights):
-        if k > len(timers):
-            del _snap_heights[k]
     _update_add_btn()   # restore button before measuring height
     _fit_window()
 
 def _fit_window():
+    global _snap_unit, _snap_btn_offset
     root.update_idletasks()
     h = root.winfo_reqheight()
-    root.geometry(f"{root.winfo_width()}x{h}")
-    _snap_heights[len(timers)] = h
-    root.minsize(250, _snap_heights.get(1, 130))
-    root.maxsize(9999, _snap_heights[len(timers)])
+    n = len(timers)
+    _snap_heights[n] = h
+
+    if _snap_unit is None and 1 in _snap_heights and 2 in _snap_heights:
+        _snap_unit = _snap_heights[2] - _snap_heights[1]
+
+    if (_snap_btn_offset is None and _snap_unit is not None
+            and 1 in _snap_heights and MAX_TIMERS in _snap_heights):
+        raw = _snap_heights[1] + (MAX_TIMERS - 1) * _snap_unit
+        _snap_btn_offset = raw - _snap_heights[MAX_TIMERS]
+
+    target = _snap_h(n) or h
+    root.minsize(250, _snap_h(1) or 130)
+    root.maxsize(9999, _snap_h(MAX_TIMERS) or target)
+    root.geometry(f"{root.winfo_width()}x{target}")
 
 # ── Height-snap on resize ──────────────────────────────────────────────────────
 def _on_resize(event):
     global _resize_pending
     if event.widget is not root or _resize_pending or not _snap_heights:
         return
-    target = min(_snap_heights.values(), key=lambda h: abs(h - event.height))
+    candidates = [_snap_h(i) for i in range(1, len(timers) + 1)]
+    candidates = [h for h in candidates if h]
+    if not candidates:
+        return
+    target = min(candidates, key=lambda h: abs(h - event.height))
     if event.height != target:
         _resize_pending = True
         root.after_idle(_do_snap)
@@ -356,10 +377,12 @@ def _on_resize(event):
 def _do_snap():
     global _resize_pending
     _resize_pending = False
-    if not _snap_heights:
+    candidates = [_snap_h(i) for i in range(1, len(timers) + 1)]
+    candidates = [h for h in candidates if h]
+    if not candidates:
         return
     current_h = root.winfo_height()
-    target = min(_snap_heights.values(), key=lambda h: abs(h - current_h))
+    target = min(candidates, key=lambda h: abs(h - current_h))
     if current_h != target:
         root.geometry(f"{root.winfo_width()}x{target}")
 
