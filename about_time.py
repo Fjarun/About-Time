@@ -125,6 +125,14 @@ def parse_input(text):
 _FLASH_COLORS = [f"#{int(255*(1-i/19)+26*(i/19)):02X}0000" for i in range(20)]
 BTN_W = 72
 
+def _make_tip():
+    return ctk.CTkLabel(
+        root, text="",
+        fg_color=("#4a4a4a", "#2a2a2a"),
+        corner_radius=4,
+        font=ctk.CTkFont(size=16),
+    )
+
 
 # ── Timer widget ───────────────────────────────────────────────────────────────
 class TimerWidget(ctk.CTkFrame):
