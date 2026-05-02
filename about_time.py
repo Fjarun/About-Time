@@ -541,7 +541,7 @@ notify_btn.bind("<Enter>", _show_notify_tip)
 notify_btn.bind("<Leave>", _hide_notify_tip)
 
 # ── Volume control ─────────────────────────────────────────────────────────────
-_VOL_MIN, _VOL_MAX, _VOL_STEP = 0.05, 0.50, 0.05
+_VOL_MIN, _VOL_MAX, _VOL_STEP = 0.025, 0.50, 0.025
 
 _vol_tip = ctk.CTkLabel(
     root, text="",
