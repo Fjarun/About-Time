@@ -60,8 +60,7 @@ _notify_enabled = False
 def beep():
     if _sound_mode == "mute":
         return
-    wav = {"short": _WAV_SHORT, "medium": _WAV_MEDIUM, "long": _WAV_LONG}[_sound_mode]
-    threading.Thread(target=_play, args=(wav,), daemon=True).start()
+    threading.Thread(target=_play, args=(_WAVS.get(_sound_mode),), daemon=True).start()
 
 def notify(title, duration):
     if not _notify_enabled or sys.platform != "win32":
