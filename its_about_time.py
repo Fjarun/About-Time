@@ -499,7 +499,7 @@ for _sym, _mode, _row, _col in [
     _btn.grid(row=_row, column=_col, padx=1, pady=1)
     _sound_btns[_mode] = _btn
 
-_set_sound("short")
+_sound_btns["short"].configure(fg_color=("#1F6AA5", "#1F6AA5"))
 
 # ── Init ───────────────────────────────────────────────────────────────────────
 add_timer(deletable=False, initial_title="It's About Time")
