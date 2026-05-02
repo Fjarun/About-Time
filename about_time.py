@@ -3,11 +3,11 @@ import threading
 import sys
 import re
 
+# ── Platform sound ─────────────────────────────────────────────────────────────
+_WAVS = {}
+
 if sys.platform == "win32":
     from winotify import Notification
-
-# ── Platform sound ─────────────────────────────────────────────────────────────
-if sys.platform == "win32":
     import winsound, struct, math
 
     def _wrap_wav(raw, rate=44100):
@@ -38,17 +38,15 @@ if sys.platform == "win32":
         return struct.pack(f"<{len(samples)}h", *samples)
 
     def _build_wavs(vol):
-        global _WAV_SHORT, _WAV_MEDIUM, _WAV_LONG
-        _WAV_SHORT  = _wrap_wav(_apply_reverb(_sine_segment(880, 0.4, 0.18, volume=vol)))
-        _WAV_MEDIUM = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
-        _WAV_LONG   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
+        _WAVS["short"]  = _wrap_wav(_apply_reverb(_sine_segment(880, 0.4, 0.18, volume=vol)))
+        _WAVS["medium"] = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
+        _WAVS["long"]   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
 
     _build_wavs(0.25)  # 50% of 0.5 max
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
 else:
-    _WAV_SHORT = _WAV_MEDIUM = _WAV_LONG = None
     def _build_wavs(vol):
         pass
     def _play(wav):
