@@ -558,8 +558,13 @@ def _hide_vol_tip(event=None):
 
 def _change_volume(delta):
     global _vol_pct
+    was_zero = _vol_pct == 0
     _vol_pct = min(100, max(0, _vol_pct + delta))
-    _build_wavs(_vol_pct / 200)  # convert: pct/100 * 0.5
+    _build_wavs(_vol_pct / 200)
+    if _vol_pct == 0:
+        _set_sound("mute", preview=False)
+    elif was_zero:
+        _set_sound(_last_sound, preview=False)
     _show_vol_tip()
 
 vol_up_btn = ctk.CTkButton(
