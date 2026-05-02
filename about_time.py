@@ -155,7 +155,7 @@ class TimerWidget(ctk.CTkFrame):
                 self, text="Remove this timer",
                 fg_color=("#4a4a4a", "#2a2a2a"),
                 corner_radius=4,
-                font=ctk.CTkFont(size=20),
+                font=ctk.CTkFont(size=16),
             )
             del_btn.bind("<Enter>", lambda e: (del_tip.place(x=34, y=7), del_tip.lift()))
             del_btn.bind("<Leave>", lambda e: del_tip.place_forget())
@@ -467,7 +467,7 @@ _tip = ctk.CTkLabel(
     root, text="",
     fg_color=("#4a4a4a", "#2a2a2a"),
     corner_radius=4,
-    font=ctk.CTkFont(size=20),
+    font=ctk.CTkFont(size=16),
 )
 
 def _show_tip(event=None):
@@ -504,7 +504,7 @@ _notify_tip = ctk.CTkLabel(
     root, text="",
     fg_color=("#4a4a4a", "#2a2a2a"),
     corner_radius=4,
-    font=ctk.CTkFont(size=20),
+    font=ctk.CTkFont(size=16),
 )
 
 def _show_notify_tip(event=None):
@@ -546,7 +546,7 @@ _sound_tip = ctk.CTkLabel(
     root, text="",
     fg_color=("#4a4a4a", "#2a2a2a"),
     corner_radius=4,
-    font=ctk.CTkFont(size=20),
+    font=ctk.CTkFont(size=16),
 )
 
 def _show_sound_tip(mode, event=None):
