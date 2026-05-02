@@ -38,8 +38,8 @@ if sys.platform == "win32":
     _WAV_SHORT  = _wrap_wav(_sine_segment(784, 0.4, 0.15))
     # ♫ ascending perfect fifth: C5 → G5
     _WAV_MEDIUM = _wrap_wav(_sine_segment(523, 0.15, 0.12) + _sine_segment(784, 0.35, 0.18))
-    # ♬ bell additive synthesis with inharmonic partials
-    _WAV_LONG   = _wrap_wav(_bell_segment())
+    # ♬ iOS-style tritone: D5 → A5 ascending fifth
+    _WAV_LONG   = _wrap_wav(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.35, 0.18))
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
