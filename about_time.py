@@ -207,11 +207,12 @@ class TimerWidget(ctk.CTkFrame):
         self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.btn_frame.pack(pady=(2, 6))
 
-        self.start_btn   = ctk.CTkButton(self.btn_frame, text="▶  Start",   width=BTN_W, command=self._do_start)
-        self.restart_btn = ctk.CTkButton(self.btn_frame, text="↺  Restart", width=BTN_W, command=self._do_restart)
-        self.pause_btn   = ctk.CTkButton(self.btn_frame, text="⏸  Pause",   width=BTN_W, command=self._do_stop)
-        self.stop_btn    = ctk.CTkButton(self.btn_frame, text="⏹  Stop",    width=BTN_W, command=self._do_stop)
-        self.resume_btn  = ctk.CTkButton(self.btn_frame, text="▶  Resume",  width=BTN_W, command=self._do_resume)
+        _ibtn = {"font": ctk.CTkFont(size=16), "width": BTN_W}
+        self.start_btn   = ctk.CTkButton(self.btn_frame, text="▶", command=self._do_start,   **_ibtn)
+        self.restart_btn = ctk.CTkButton(self.btn_frame, text="↺", command=self._do_restart, **_ibtn)
+        self.pause_btn   = ctk.CTkButton(self.btn_frame, text="⏸", command=self._do_stop,    **_ibtn)
+        self.stop_btn    = ctk.CTkButton(self.btn_frame, text="⏹", command=self._do_stop,    **_ibtn)
+        self.resume_btn  = ctk.CTkButton(self.btn_frame, text="▶", command=self._do_resume,  **_ibtn)
 
         self._set_state("idle")
 
