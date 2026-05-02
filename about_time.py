@@ -67,7 +67,7 @@ else:
     def _play(wav):
         print("\a", end="", flush=True)
 
-_volume = 0.25
+_vol_pct = 50  # integer 0–100 in 5% steps; audio volume = _vol_pct / 100 * 0.5
 _sound_mode = "short"
 _notify_enabled = False
 
