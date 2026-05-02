@@ -472,12 +472,7 @@ def toggle_topmost():
 def _update_pin():
     pin_btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if topmost_var.get() else "transparent")
 
-_tip = ctk.CTkLabel(
-    root, text="",
-    fg_color=("#4a4a4a", "#2a2a2a"),
-    corner_radius=4,
-    font=ctk.CTkFont(size=16),
-)
+_tip = _make_tip()
 
 def _show_tip(event=None):
     _tip.configure(text="Always on top: On" if topmost_var.get() else "Always on top: Off")
