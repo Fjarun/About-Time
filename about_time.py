@@ -456,7 +456,7 @@ add_btn = ctk.CTkButton(
 )
 add_btn.pack()
 
-_CLOCK_SYMS = {1: "◷", 2: "◶", 3: "◵", 4: "◴"}
+_CLOCK_SYMS = {1: "◓", 2: "◑", 3: "◒", 4: "◐"}
 
 def _update_add_btn():
     if len(timers) >= MAX_TIMERS:
