@@ -587,12 +587,7 @@ def _set_sound(mode, preview=True):
     if preview:
         beep()
 
-_sound_tip = ctk.CTkLabel(
-    root, text="",
-    fg_color=("#4a4a4a", "#2a2a2a"),
-    corner_radius=4,
-    font=ctk.CTkFont(size=16),
-)
+_sound_tip = _make_tip()
 
 def _show_sound_tip(mode, event=None):
     _sound_tip.configure(text=_sound_labels[mode])
