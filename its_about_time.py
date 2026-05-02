@@ -3,6 +3,9 @@ import threading
 import sys
 import re
 
+if sys.platform == "win32":
+    from winotify import Notification
+
 # ── Platform sound ─────────────────────────────────────────────────────────────
 if sys.platform == "win32":
     import winsound, struct, math
