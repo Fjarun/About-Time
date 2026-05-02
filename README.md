@@ -13,6 +13,7 @@ A free Windows desktop timer app that stays on top of all your other windows —
 - Flexible input: plain numbers assumed as minutes, or suffix with `s`, `m`, or `h`
 - **Custom notification chimes** — choose short, medium, or long from a family of matched notification sounds, all designed to feel consistent
 - **Mute option** — silence all timer alerts for distraction-free or shared-space use
+- **Volume control** — fine-tune notification volume to your preference in 5% increments, from full to silent
 - Sound selector always visible, with instant preview on click so you know exactly what you're setting
 - **Windows desktop notifications** — opt-in toast notifications when any timer finishes, showing the timer's name or duration if untitled
 - Notification toggle always accessible, off by default for distraction-free use
