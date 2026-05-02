@@ -233,14 +233,17 @@ class TimerWidget(ctk.CTkFrame):
             self.after_id = root.after(1000, self._tick)
 
     # ── Actions ────────────────────────────────────────────────────────────────
-    def _do_start(self):
-        if parse_input(self.display_var.get()) is None:
-            self.flash_invalid()
-            return
+    def _start_running(self):
         self.remaining_seconds = self.duration_seconds
         self.display_var.set(fmt(self.remaining_seconds))
         self._set_state("running")
         self.after_id = root.after(1000, self._tick)
+
+    def _do_start(self):
+        if parse_input(self.display_var.get()) is None:
+            self.flash_invalid()
+            return
+        self._start_running()
 
     def _do_stop(self):
         if self.after_id:
@@ -261,10 +264,7 @@ class TimerWidget(ctk.CTkFrame):
         if self.after_id:
             root.after_cancel(self.after_id)
             self.after_id = None
-        self.remaining_seconds = self.duration_seconds
-        self.display_var.set(fmt(self.remaining_seconds))
-        self._set_state("running")
-        self.after_id = root.after(1000, self._tick)
+        self._start_running()
 
     # ── State machine ──────────────────────────────────────────────────────────
     def _set_state(self, new_state):
