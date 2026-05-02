@@ -41,7 +41,7 @@ if sys.platform == "win32":
     # ♫ two-note ascending: D5 → A5 — first two notes of the full pattern
     _WAV_MEDIUM = _wrap_wav(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.35, 0.18))
     # ♬ three-note ascending: D5 → A5 → D6
-    _WAV_LONG   = _wrap_wav(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.15, 0.12) + _sine_segment(1175, 0.25, 0.18))
+    _WAV_LONG   = _wrap_wav(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.15, 0.12) + _sine_segment(1175, 0.25, 0.18, fade_ms=10))
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
