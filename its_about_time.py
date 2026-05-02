@@ -79,7 +79,7 @@ def parse_input(text):
 
 
 _FLASH_COLORS = [f"#{int(255*(1-i/19)+26*(i/19)):02X}0000" for i in range(20)]
-BTN_W = 72  # button width in pixels
+BTN_W = 72
 
 
 # ── Timer widget ───────────────────────────────────────────────────────────────
