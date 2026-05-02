@@ -38,8 +38,8 @@ if sys.platform == "win32":
     _WAV_SHORT  = _wrap_wav(_sine_segment(784, 0.4, 0.15))
     # ♫ ascending perfect fifth: C5 → G5
     _WAV_MEDIUM = _wrap_wav(_sine_segment(523, 0.15, 0.12) + _sine_segment(784, 0.35, 0.18))
-    # ♬ three-note descending: C6 → G5 → C5
-    _WAV_LONG   = _wrap_wav(_sine_segment(1047, 0.15, 0.12) + _sine_segment(784, 0.15, 0.12) + _sine_segment(523, 0.25, 0.18))
+    # ♬ three-note ascending: D5 → A5 → D6
+    _WAV_LONG   = _wrap_wav(_sine_segment(587, 0.15, 0.12) + _sine_segment(880, 0.15, 0.12) + _sine_segment(1175, 0.25, 0.18))
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
