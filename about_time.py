@@ -69,6 +69,7 @@ else:
 
 _vol_pct = 50  # integer 0–100 in 5% steps; audio volume = _vol_pct / 100 * 0.5
 _sound_mode = "short"
+_last_sound = "short"
 _notify_enabled = False
 
 def beep():
