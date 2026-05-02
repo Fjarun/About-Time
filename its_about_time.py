@@ -67,7 +67,7 @@ def notify(title, duration):
         return
     msg = f"Your timer '{title}' has finished." if title else f"Your {duration} timer has finished."
     def _send():
-        toast = Notification(app_id="It's About Time", title="Timer finished", msg=msg)
+        toast = Notification(app_id="About Time", title="Timer finished", msg=msg)
         toast.show()
     threading.Thread(target=_send, daemon=True).start()
 
