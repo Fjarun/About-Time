@@ -541,8 +541,6 @@ notify_btn.bind("<Enter>", _show_notify_tip)
 notify_btn.bind("<Leave>", _hide_notify_tip)
 
 # ── Volume control ─────────────────────────────────────────────────────────────
-_VOL_MIN, _VOL_MAX, _VOL_STEP = 0.025, 0.50, 0.025
-
 _vol_tip = ctk.CTkLabel(
     root, text="",
     fg_color=("#4a4a4a", "#2a2a2a"),
@@ -551,17 +549,16 @@ _vol_tip = ctk.CTkLabel(
 )
 
 def _show_vol_tip(event=None):
-    pct = round(_volume / _VOL_MAX * 100)
-    _vol_tip.configure(text=f"Volume: {pct}%")
+    _vol_tip.configure(text=f"Volume: {_vol_pct}%")
     _vol_tip.place(x=34, y=63)
 
 def _hide_vol_tip(event=None):
     _vol_tip.place_forget()
 
 def _change_volume(delta):
-    global _volume
-    _volume = round(min(_VOL_MAX, max(_VOL_MIN, _volume + delta)), 2)
-    _build_wavs(_volume)
+    global _vol_pct
+    _vol_pct = min(100, max(0, _vol_pct + delta))
+    _build_wavs(_vol_pct / 200)  # convert: pct/100 * 0.5
     _show_vol_tip()
 
 vol_up_btn = ctk.CTkButton(
