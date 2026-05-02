@@ -43,7 +43,6 @@ if sys.platform == "win32":
         _WAV_MEDIUM = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
         _WAV_LONG   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
 
-    _WAV_SHORT = _WAV_MEDIUM = _WAV_LONG = None
     _build_wavs(0.25)  # 50% of 0.5 max
 
     def _play(wav):
