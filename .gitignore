@@ -1,3 +1,4 @@
 # PyInstaller
+*.spec
 build/
 dist/
