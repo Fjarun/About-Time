@@ -4,7 +4,7 @@
 
 A free Windows desktop timer app that stays on top of all your other windows — so your countdowns are always visible, no matter what you're working in. Run up to 5 named task timers simultaneously, each with its own label and countdown, and choose from an optional family of notification sounds when each one finishes. Perfect for productivity workflows where you need a floating timer that doesn't disappear behind your browser or IDE.
 
-This project began as a personal-needs application and was built entirely using Claude Code, serving as a practical self-familiarisation with AI-assisted development tools.
+This project was made to account for a personal need for an always-on-top timer program, and was built entirely using Claude Code as a practical exercise in working with AI-assisted development tools.
 
 ## Features
 
