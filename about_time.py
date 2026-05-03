@@ -44,8 +44,6 @@ if sys.platform == "win32":
         _WAVS["medium"] = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
         _WAVS["long"]   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
 
-    _build_wavs(0.25)
-
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
 else:
