@@ -97,10 +97,11 @@ def _save_settings():
         pass
 
 _s = _load_settings()
-_vol_pct       = _s["volume"]
-_sound_mode    = _s["sound"]
-_last_sound    = _s["last_sound"]
+_vol_pct        = _s["volume"]
+_sound_mode     = _s["sound"]
+_last_sound     = _s["last_sound"]
 _notify_enabled = _s["notifications"]
+_pinned         = _s["pinned"]
 
 def beep():
     if _sound_mode == "mute":
