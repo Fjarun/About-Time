@@ -69,9 +69,9 @@ def _load_settings():
             sound = defaults["sound"]
         if vol == 0:
             sound = "mute"
-        last_sound = data.get("last_sound", "short")
+        last_sound = data.get("last_sound", defaults["last_sound"])
         if last_sound not in ("short", "medium", "long"):
-            last_sound = "short"
+            last_sound = defaults["last_sound"]
         return {
             "volume":        vol,
             "sound":         sound,
