@@ -2,6 +2,8 @@ import customtkinter as ctk
 import threading
 import sys
 import re
+import json
+import os
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -42,7 +44,7 @@ if sys.platform == "win32":
         _WAVS["medium"] = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
         _WAVS["long"]   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
 
-    _build_wavs(0.25)  # 50% of 0.5 max
+    _build_wavs(0.25)
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
@@ -52,10 +54,55 @@ else:
     def _play(wav):
         print("\a", end="", flush=True)
 
-_vol_pct = 50  # integer 0–100 in 5% steps; audio volume = _vol_pct / 100 * 0.5
-_sound_mode = "short"
-_last_sound = "short"
-_notify_enabled = False
+# ── Settings persistence ────────────────────────────────────────────────────────
+_SETTINGS_PATH = os.path.join(os.getenv("APPDATA", ""), "About Time", "settings.json")
+
+def _load_settings():
+    defaults = {"volume": 50, "sound": "short", "last_sound": "short",
+                "notifications": False, "pinned": False}
+    try:
+        with open(_SETTINGS_PATH) as f:
+            data = json.load(f)
+        vol = data.get("volume", defaults["volume"])
+        if not isinstance(vol, int) or not (0 <= vol <= 100) or vol % 5 != 0:
+            vol = defaults["volume"]
+        sound = data.get("sound", defaults["sound"])
+        if sound not in ("short", "medium", "long", "mute"):
+            sound = defaults["sound"]
+        if vol == 0:
+            sound = "mute"
+        last_sound = data.get("last_sound", "short")
+        if last_sound not in ("short", "medium", "long"):
+            last_sound = "short"
+        return {
+            "volume":        vol,
+            "sound":         sound,
+            "last_sound":    last_sound,
+            "notifications": bool(data.get("notifications", defaults["notifications"])),
+            "pinned":        bool(data.get("pinned", defaults["pinned"])),
+        }
+    except Exception:
+        return defaults
+
+def _save_settings():
+    try:
+        os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
+        with open(_SETTINGS_PATH, "w") as f:
+            json.dump({
+                "volume":        _vol_pct,
+                "sound":         _sound_mode,
+                "last_sound":    _last_sound,
+                "notifications": _notify_enabled,
+                "pinned":        topmost_var.get(),
+            }, f, indent=2)
+    except Exception:
+        pass
+
+_s = _load_settings()
+_vol_pct       = _s["volume"]
+_sound_mode    = _s["sound"]
+_last_sound    = _s["last_sound"]
+_notify_enabled = _s["notifications"]
 
 def beep():
     if _sound_mode == "mute":
@@ -379,7 +426,7 @@ def add_timer(deletable=False, initial_title=""):
                      initial_title=initial_title)
     tw.pack(fill="x")
     timers.append((sep, tw))
-    _update_add_btn()   # hide button first so height is measured without it at cap
+    _update_add_btn()
     _fit_window()
 
 def remove_timer(tw):
@@ -394,7 +441,7 @@ def remove_timer(tw):
             tw.destroy()
             timers.pop(i)
             break
-    _update_add_btn()   # restore button before measuring height
+    _update_add_btn()
     _fit_window()
 
 def _fit_window():
@@ -467,13 +514,13 @@ def _update_add_btn():
         add_btn_frame.pack(fill="x", pady=(0, 6))
 
 # ── Pin / Always on top ────────────────────────────────────────────────────────
-# Created after all pack() widgets so place() renders on top of them.
-topmost_var = ctk.BooleanVar(value=False)
+topmost_var = ctk.BooleanVar(value=_s["pinned"])
 
 def toggle_topmost():
     topmost_var.set(not topmost_var.get())
     root.wm_attributes("-topmost", topmost_var.get())
     _update_pin()
+    _save_settings()
     if _tip.winfo_ismapped():
         _show_tip()
 
@@ -499,13 +546,13 @@ pin_btn = ctk.CTkButton(
 pin_btn.place(x=4, y=4)
 pin_btn.bind("<Enter>", _show_tip)
 pin_btn.bind("<Leave>", _hide_tip)
-_update_pin()
 
 # ── Notification toggle ────────────────────────────────────────────────────────
 def toggle_notify():
     global _notify_enabled
     _notify_enabled = not _notify_enabled
     _update_notify_btn()
+    _save_settings()
     if _notify_tip.winfo_ismapped():
         _show_notify_tip()
 
@@ -551,6 +598,7 @@ def _change_volume(delta):
         _set_sound("mute", preview=False)
     elif was_zero:
         _set_sound(_last_sound, preview=False)
+    _save_settings()
     _show_vol_tip()
 
 vol_up_btn = ctk.CTkButton(
@@ -594,6 +642,7 @@ def _set_sound(mode, preview=True):
         btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if m == mode else "transparent")
     if preview:
         beep()
+        _save_settings()
 
 _sound_tip = _make_tip()
 
@@ -627,9 +676,13 @@ for _sym, _mode, _row in [
     _btn.bind("<Leave>", _hide_sound_tip)
     _sound_btns[_mode] = _btn
 
-_sound_btns["short"].configure(fg_color=("#1F6AA5", "#1F6AA5"))
+# ── Init — apply persisted settings ───────────────────────────────────────────
+_build_wavs(_vol_pct / 200)
+root.wm_attributes("-topmost", topmost_var.get())
+_update_pin()
+_update_notify_btn()
+_set_sound(_sound_mode, preview=False)
 
-# ── Init ───────────────────────────────────────────────────────────────────────
 add_timer(deletable=False, initial_title="About Time")
 root.bind("<Configure>", _on_resize)
 
