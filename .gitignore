@@ -14,3 +14,4 @@ dist/
 
 # Claude Code internals
 .srcext
+.claude/
