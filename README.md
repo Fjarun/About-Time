@@ -21,7 +21,4 @@ This project was made to account for a personal need for an always-on-top timer 
 - Sound selector always visible, with instant preview on click so you know exactly what you're setting
 - **Windows desktop notifications** — opt-in toast notifications when any timer finishes, showing the timer's name or duration if untitled
 - Notification toggle always accessible, off by default for distraction-free use
-
-## Coming Soon
-
-- **Settings persistence** — your sound choice, always-on-top state, and notification preference remembered between sessions
+- **Settings persistence** — your sound choice, volume, always-on-top state, and notification preference are remembered between sessions
