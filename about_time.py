@@ -513,7 +513,7 @@ def _update_add_btn():
         add_btn_frame.pack(fill="x", pady=(0, 6))
 
 # ── Pin / Always on top ────────────────────────────────────────────────────────
-topmost_var = ctk.BooleanVar(value=_s["pinned"])
+topmost_var = ctk.BooleanVar(value=_pinned)
 
 def toggle_topmost():
     topmost_var.set(not topmost_var.get())
