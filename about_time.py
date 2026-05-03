@@ -4,7 +4,7 @@ import sys
 import re
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
-_WAVS: dict = {}
+_WAVS = {}
 
 if sys.platform == "win32":
     from winotify import Notification
