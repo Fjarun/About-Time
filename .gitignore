@@ -1,5 +1,4 @@
 # PyInstaller
 *.spec
-*.exe
 build/
 dist/
