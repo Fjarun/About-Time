@@ -93,6 +93,7 @@ def _save_settings():
                 "last_sound":    _last_sound,
                 "notifications": _notify_enabled,
                 "pinned":        topmost_var.get(),
+                "titles":        [tw.title_entry.get() for (_, tw) in timers],
             }, f, indent=2)
     except Exception:
         pass
