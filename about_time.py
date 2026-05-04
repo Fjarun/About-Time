@@ -684,7 +684,16 @@ _update_pin()
 _update_notify_btn()
 _set_sound(_sound_mode, preview=False)
 
-add_timer(deletable=False, initial_title="About Time")
+if _first_boot:
+    add_timer(deletable=False, initial_title="About Time")
+else:
+    _saved_titles = _s.get("titles")
+    if not isinstance(_saved_titles, list) or not _saved_titles:
+        _saved_titles = [""]
+    _saved_titles = [t if isinstance(t, str) else "" for t in _saved_titles[:MAX_TIMERS]]
+    for i, _t in enumerate(_saved_titles):
+        add_timer(deletable=(i > 0), initial_title=_t)
+
 root.bind("<Configure>", _on_resize)
 
 root.mainloop()
