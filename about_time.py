@@ -697,7 +697,11 @@ else:
     for i, _t in enumerate(_saved_titles):
         add_timer(deletable=(i > 0), initial_title=_t)
 
+def _on_close():
+    _save_settings()
+    root.destroy()
+
 root.bind("<Configure>", _on_resize)
-root.protocol("WM_DELETE_WINDOW", lambda: (_save_settings(), root.destroy()))
+root.protocol("WM_DELETE_WINDOW", _on_close)
 
 root.mainloop()
