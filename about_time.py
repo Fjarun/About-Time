@@ -54,6 +54,7 @@ else:
 
 # ── Settings persistence ────────────────────────────────────────────────────────
 _SETTINGS_PATH = os.path.join(os.getenv("APPDATA", ""), "About Time", "settings.json")
+_first_boot = not os.path.exists(_SETTINGS_PATH)
 
 def _load_settings():
     defaults = {"volume": 50, "sound": "short", "last_sound": "short",
