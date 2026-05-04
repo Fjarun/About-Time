@@ -445,6 +445,7 @@ def remove_timer(tw):
             break
     _update_add_btn()
     _fit_window()
+    _save_settings()
 
 def _fit_window():
     global _snap_unit, _snap_btn_offset
