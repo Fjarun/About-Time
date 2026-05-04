@@ -226,6 +226,7 @@ class TimerWidget(ctk.CTkFrame):
         )
         self.title_entry.pack(fill="x", padx=(36, 36), pady=(6, 0))
         self.title_entry.bind("<Return>", lambda e: self.focus())
+        self.title_entry.bind("<FocusOut>", lambda e: _save_settings())
         if initial_title:
             self.title_entry.insert(0, initial_title)
 
