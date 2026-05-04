@@ -429,6 +429,7 @@ def add_timer(deletable=False, initial_title=""):
     timers.append((sep, tw))
     _update_add_btn()
     _fit_window()
+    _save_settings()
 
 def remove_timer(tw):
     if tw.after_id:
