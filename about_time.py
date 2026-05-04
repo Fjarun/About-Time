@@ -697,5 +697,6 @@ else:
         add_timer(deletable=(i > 0), initial_title=_t)
 
 root.bind("<Configure>", _on_resize)
+root.protocol("WM_DELETE_WINDOW", lambda: (_save_settings(), root.destroy()))
 
 root.mainloop()
