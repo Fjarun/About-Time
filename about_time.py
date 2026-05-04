@@ -73,12 +73,15 @@ def _load_settings():
         last_sound = data.get("last_sound", defaults["last_sound"])
         if last_sound not in ("short", "medium", "long"):
             last_sound = defaults["last_sound"]
+        raw_titles = data.get("titles")
+        titles = raw_titles if isinstance(raw_titles, list) else None
         return {
             "volume":        vol,
             "sound":         sound,
             "last_sound":    last_sound,
             "notifications": bool(data.get("notifications", defaults["notifications"])),
             "pinned":        bool(data.get("pinned", defaults["pinned"])),
+            "titles":        titles,
         }
     except Exception:
         return defaults
