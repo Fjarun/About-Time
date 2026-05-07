@@ -84,7 +84,7 @@ def _load_settings():
         raw_timers = data.get("timers")
         if isinstance(raw_timers, list):
             timer_data = []
-            for t in raw_timers[:5]:
+            for t in raw_timers[:MAX_TIMERS]:
                 if not isinstance(t, dict):
                     continue
                 title = t.get("title", "")
