@@ -326,6 +326,18 @@ class TimerWidget(ctk.CTkFrame):
 
         self._set_state("idle")
 
+    # ── Title placeholder ──────────────────────────────────────────────────────
+    def _title_focus_in(self, event=None):
+        if self.title_entry.get() == _TITLE_PLACEHOLDER:
+            self.title_entry.delete(0, "end")
+            self.title_entry.configure(text_color=_TITLE_TEXT_COLOR)
+
+    def _title_focus_out(self, event=None):
+        if self.title_entry.get() == "":
+            self.title_entry.insert(0, _TITLE_PLACEHOLDER)
+            self.title_entry.configure(text_color=_TITLE_PLACEHOLDER_COLOR)
+        _save_settings()
+
     # ── Flash ──────────────────────────────────────────────────────────────────
     def flash_invalid(self, step=0):
         if step < len(_FLASH_COLORS):
