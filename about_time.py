@@ -75,6 +75,10 @@ def _load_settings():
             last_sound = defaults["last_sound"]
         raw_titles = data.get("titles")
         titles = raw_titles if isinstance(raw_titles, list) else None
+        win_x = data.get("window_x")
+        win_y = data.get("window_y")
+        if not isinstance(win_x, int) or not isinstance(win_y, int):
+            win_x = win_y = None
         return {
             "volume":        vol,
             "sound":         sound,
@@ -82,6 +86,8 @@ def _load_settings():
             "notifications": bool(data.get("notifications", defaults["notifications"])),
             "pinned":        bool(data.get("pinned", defaults["pinned"])),
             "titles":        titles,
+            "window_x":      win_x,
+            "window_y":      win_y,
         }
     except Exception:
         return defaults
