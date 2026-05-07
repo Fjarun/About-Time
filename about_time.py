@@ -122,7 +122,9 @@ def _save_settings():
                 "pinned":        topmost_var.get(),
                 "window_x":      root.winfo_x(),
                 "window_y":      root.winfo_y(),
-                "titles":        [tw.title_var.get() for (_, tw) in timers],
+                "timers":        [{"title": tw.title_var.get(),
+                                   "duration": tw.duration_seconds}
+                                  for (_, tw) in timers],
             }, f, indent=2)
     except Exception:
         pass
