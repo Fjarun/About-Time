@@ -53,6 +53,7 @@ else:
         print("\a", end="", flush=True)
 
 # ── Settings persistence ────────────────────────────────────────────────────────
+MAX_TIMERS = 5
 _SETTINGS_PATH = os.path.join(os.getenv("APPDATA", ""), "About Time", "settings.json")
 _first_boot = not os.path.exists(_SETTINGS_PATH)
 
