@@ -217,15 +217,15 @@ def _make_tip():
 
 # ── Timer widget ───────────────────────────────────────────────────────────────
 class TimerWidget(ctk.CTkFrame):
-    def __init__(self, parent, deletable=False, on_delete=None, initial_title="", **kwargs):
+    def __init__(self, parent, deletable=False, on_delete=None, initial_title="", initial_duration=15 * 60, **kwargs):
         super().__init__(parent, fg_color="transparent", border_width=0, corner_radius=8, **kwargs)
-        self.duration_seconds = 15 * 60
-        self.remaining_seconds = 15 * 60
+        self.duration_seconds = initial_duration
+        self.remaining_seconds = initial_duration
         self.state = "idle"
         self.after_id = None
-        self.last_valid_display = "15:00"
+        self.last_valid_display = fmt(initial_duration)
         self.editing_countdown = False
-        self.display_var = ctk.StringVar(value="15:00")
+        self.display_var = ctk.StringVar(value=fmt(initial_duration))
         self.edit_var = ctk.StringVar()
         self._build(deletable, on_delete, initial_title)
 
