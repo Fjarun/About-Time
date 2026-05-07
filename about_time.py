@@ -272,6 +272,7 @@ class TimerWidget(ctk.CTkFrame):
         self.title_entry = ctk.CTkEntry(
             self,
             placeholder_text="Click to enter title",
+            placeholder_text_color=("#888888", "#aaaaaa"),
             textvariable=self.title_var,
             border_width=0,
             fg_color="transparent",
