@@ -268,17 +268,17 @@ class TimerWidget(ctk.CTkFrame):
             del_btn.bind("<Enter>", lambda e: (del_tip.place(x=34, y=7), del_tip.lift()))
             del_btn.bind("<Leave>", lambda e: del_tip.place_forget())
 
-        self.title_var = ctk.StringVar(value=initial_title)
         self.title_entry = ctk.CTkEntry(
             self,
             placeholder_text="Click to enter title",
             placeholder_text_color=("#888888", "#aaaaaa"),
-            textvariable=self.title_var,
             border_width=0,
             fg_color="transparent",
             font=ctk.CTkFont(size=16),
             justify="center",
         )
+        if initial_title:
+            self.title_entry.insert(0, initial_title)
         self.title_entry.pack(fill="x", padx=(36, 36), pady=(6, 0))
         self.title_entry.bind("<Return>", lambda e: self.focus())
         self.title_entry.bind("<FocusOut>", lambda e: _save_settings())
