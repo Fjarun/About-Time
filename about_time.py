@@ -226,17 +226,27 @@ def _make_tip():
 
 # ── Timer widget ───────────────────────────────────────────────────────────────
 class TimerWidget(ctk.CTkFrame):
-    def __init__(self, parent, deletable=False, on_delete=None, initial_title="", initial_duration=15 * 60, **kwargs):
+    def __init__(self, parent, deletable=False, on_delete=None, initial_title="",
+                 initial_duration=15 * 60, initial_remaining=None, initial_state="idle", **kwargs):
         super().__init__(parent, fg_color="transparent", border_width=0, corner_radius=8, **kwargs)
         self.duration_seconds = initial_duration
-        self.remaining_seconds = initial_duration
-        self.state = "idle"
         self.after_id = None
-        self.last_valid_display = fmt(initial_duration)
         self.editing_countdown = False
-        self.display_var = ctk.StringVar(value=fmt(initial_duration))
         self.edit_var = ctk.StringVar()
-        self._build(deletable, on_delete, initial_title)
+        # Restore mid-run timers as paused; treat finished as idle
+        if initial_state in ("running", "paused") and initial_remaining is not None and initial_remaining > 0:
+            self.remaining_seconds = initial_remaining
+            self.state = "idle"
+            self.last_valid_display = fmt(initial_duration)
+            self.display_var = ctk.StringVar(value=fmt(initial_remaining))
+            self._build(deletable, on_delete, initial_title)
+            root.after_idle(lambda: self._set_state("paused"))
+        else:
+            self.remaining_seconds = initial_duration
+            self.state = "idle"
+            self.last_valid_display = fmt(initial_duration)
+            self.display_var = ctk.StringVar(value=fmt(initial_duration))
+            self._build(deletable, on_delete, initial_title)
 
     def _build(self, deletable, on_delete, initial_title=""):
         if deletable:
