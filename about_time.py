@@ -275,8 +275,6 @@ class TimerWidget(ctk.CTkFrame):
 
         self.title_entry = ctk.CTkEntry(
             self,
-            placeholder_text="Click to enter title",
-            placeholder_text_color=("#888888", "#aaaaaa"),
             border_width=0,
             fg_color="transparent",
             font=ctk.CTkFont(size=16),
@@ -284,9 +282,14 @@ class TimerWidget(ctk.CTkFrame):
         )
         if initial_title:
             self.title_entry.insert(0, initial_title)
+            self.title_entry.configure(text_color=_TITLE_TEXT_COLOR)
+        else:
+            self.title_entry.insert(0, _TITLE_PLACEHOLDER)
+            self.title_entry.configure(text_color=_TITLE_PLACEHOLDER_COLOR)
         self.title_entry.pack(fill="x", padx=(36, 36), pady=(6, 0))
+        self.title_entry.bind("<FocusIn>",  self._title_focus_in)
+        self.title_entry.bind("<FocusOut>", self._title_focus_out)
         self.title_entry.bind("<Return>", lambda e: self.focus())
-        self.title_entry.bind("<FocusOut>", lambda e: _save_settings())
 
         self.countdown_frame = ctk.CTkFrame(self, fg_color="transparent", border_width=0)
         self.countdown_frame.pack(pady=(2, 2))
