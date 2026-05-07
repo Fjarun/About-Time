@@ -124,7 +124,9 @@ def _save_settings():
                 "window_x":      root.winfo_x(),
                 "window_y":      root.winfo_y(),
                 "timers":        [{"title": tw.title_var.get(),
-                                   "duration": tw.duration_seconds}
+                                   "duration": tw.duration_seconds,
+                                   "remaining": tw.remaining_seconds,
+                                   "state": tw.state}
                                   for (_, tw) in timers],
             }, f, indent=2)
     except Exception:
