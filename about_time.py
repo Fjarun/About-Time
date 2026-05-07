@@ -723,12 +723,9 @@ _set_sound(_sound_mode, preview=False)
 if _first_boot:
     add_timer(deletable=False, initial_title="About Time")
 else:
-    _saved_titles = _s.get("titles")
-    if not isinstance(_saved_titles, list) or not _saved_titles:
-        _saved_titles = [""]
-    _saved_titles = [t if isinstance(t, str) else "" for t in _saved_titles[:MAX_TIMERS]]
-    for i, _t in enumerate(_saved_titles):
-        add_timer(deletable=(i > 0), initial_title=_t)
+    _saved_timers = _s.get("timers") or [{"title": "", "duration": 15 * 60}]
+    for i, _t in enumerate(_saved_timers):
+        add_timer(deletable=(i > 0), initial_title=_t["title"], initial_duration=_t["duration"])
 
 def _on_close():
     _save_settings()
