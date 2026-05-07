@@ -450,7 +450,7 @@ def _snap_h(n):
         return h
     return _snap_heights.get(n)
 
-def add_timer(deletable=False, initial_title=""):
+def add_timer(deletable=False, initial_title="", initial_duration=15 * 60):
     if len(timers) >= MAX_TIMERS:
         return
     sep = None
@@ -458,7 +458,7 @@ def add_timer(deletable=False, initial_title=""):
         sep = ctk.CTkFrame(timers_frame, height=1, fg_color=("#444444", "#333333"))
         sep.pack(fill="x", padx=12, pady=2)
     tw = TimerWidget(timers_frame, deletable=deletable, on_delete=lambda: remove_timer(tw),
-                     initial_title=initial_title)
+                     initial_title=initial_title, initial_duration=initial_duration)
     tw.pack(fill="x")
     timers.append((sep, tw))
     _update_add_btn()
