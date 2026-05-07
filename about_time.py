@@ -115,6 +115,8 @@ _sound_mode     = _s["sound"]
 _last_sound     = _s["last_sound"]
 _notify_enabled = _s["notifications"]
 _pinned         = _s["pinned"]
+_win_x          = _s.get("window_x")
+_win_y          = _s.get("window_y")
 
 def beep():
     if _sound_mode == "mute":
