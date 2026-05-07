@@ -134,7 +134,7 @@ def _save_settings():
                 "pinned":        topmost_var.get(),
                 "window_x":      root.winfo_x(),
                 "window_y":      root.winfo_y(),
-                "timers":        [{"title": tw.title_entry.get(),
+                "timers":        [{"title": tw.title_entry.get() if tw.title_entry.get() != _TITLE_PLACEHOLDER else "",
                                    "duration": tw.duration_seconds,
                                    "remaining": tw.remaining_seconds,
                                    "state": tw.state}
