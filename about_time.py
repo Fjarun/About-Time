@@ -717,4 +717,11 @@ def _on_close():
 root.bind("<Configure>", _on_resize)
 root.protocol("WM_DELETE_WINDOW", _on_close)
 
+# Restore window position — guard against off-screen (negative or beyond virtual desktop)
+if _win_x is not None and _win_y is not None:
+    sw = root.winfo_screenwidth()
+    sh = root.winfo_screenheight()
+    if 0 <= _win_x < sw - 50 and 0 <= _win_y < sh - 50:
+        root.geometry(f"+{_win_x}+{_win_y}")
+
 root.mainloop()
