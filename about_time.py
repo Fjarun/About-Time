@@ -52,8 +52,13 @@ else:
     def _play(wav):
         print("\a", end="", flush=True)
 
-# ── Settings persistence ────────────────────────────────────────────────────────
+# ── Constants ──────────────────────────────────────────────────────────────────
 MAX_TIMERS = 5
+_TITLE_PLACEHOLDER = "Click to enter title"
+_TITLE_PLACEHOLDER_COLOR = "#aaaaaa"
+_TITLE_TEXT_COLOR = "#ffffff"
+
+# ── Settings persistence ────────────────────────────────────────────────────────
 _SETTINGS_PATH = os.path.join(os.getenv("APPDATA", ""), "About Time", "settings.json")
 _first_boot = not os.path.exists(_SETTINGS_PATH)
 
