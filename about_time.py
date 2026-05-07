@@ -52,6 +52,12 @@ else:
     def _play(wav):
         print("\a", end="", flush=True)
 
+# ── Constants ──────────────────────────────────────────────────────────────────
+MAX_TIMERS = 5
+_TITLE_PLACEHOLDER = "Click to enter title"
+_TITLE_PLACEHOLDER_COLOR = "#aaaaaa"
+_TITLE_TEXT_COLOR = "#ffffff"
+
 # ── Settings persistence ────────────────────────────────────────────────────────
 _SETTINGS_PATH = os.path.join(os.getenv("APPDATA", ""), "About Time", "settings.json")
 _first_boot = not os.path.exists(_SETTINGS_PATH)
@@ -75,13 +81,43 @@ def _load_settings():
             last_sound = defaults["last_sound"]
         raw_titles = data.get("titles")
         titles = raw_titles if isinstance(raw_titles, list) else None
+        win_x = data.get("window_x")
+        win_y = data.get("window_y")
+        if not isinstance(win_x, int) or not isinstance(win_y, int):
+            win_x = win_y = None
+        # New format: list of per-timer dicts. Fall back to legacy "titles" list.
+        raw_timers = data.get("timers")
+        if isinstance(raw_timers, list):
+            timer_data = []
+            for t in raw_timers[:MAX_TIMERS]:
+                if not isinstance(t, dict):
+                    continue
+                title = t.get("title", "")
+                if not isinstance(title, str):
+                    title = ""
+                dur = t.get("duration", 15 * 60)
+                if not isinstance(dur, int) or not (1 <= dur <= 359999):
+                    dur = 15 * 60
+                rem = t.get("remaining", dur)
+                if not isinstance(rem, int) or not (0 <= rem <= dur):
+                    rem = dur
+                state = t.get("state", "idle")
+                if state not in ("idle", "running", "paused", "finished"):
+                    state = "idle"
+                timer_data.append({"title": title, "duration": dur, "remaining": rem, "state": state})
+        else:
+            # Migrate from legacy "titles" list
+            timer_data = [{"title": t if isinstance(t, str) else "", "duration": 15 * 60}
+                          for t in (titles or [""])]
         return {
             "volume":        vol,
             "sound":         sound,
             "last_sound":    last_sound,
             "notifications": bool(data.get("notifications", defaults["notifications"])),
             "pinned":        bool(data.get("pinned", defaults["pinned"])),
-            "titles":        titles,
+            "window_x":      win_x,
+            "window_y":      win_y,
+            "timers":        timer_data,
         }
     except Exception:
         return defaults
@@ -96,7 +132,13 @@ def _save_settings():
                 "last_sound":    _last_sound,
                 "notifications": _notify_enabled,
                 "pinned":        topmost_var.get(),
-                "titles":        [tw.title_var.get() for (_, tw) in timers],
+                "window_x":      root.winfo_x(),
+                "window_y":      root.winfo_y(),
+                "timers":        [{"title": tw.title_entry.get() if tw.title_entry.get() != _TITLE_PLACEHOLDER else "",
+                                   "duration": tw.duration_seconds,
+                                   "remaining": tw.remaining_seconds,
+                                   "state": tw.state}
+                                  for (_, tw) in timers],
             }, f, indent=2)
     except Exception:
         pass
@@ -107,6 +149,8 @@ _sound_mode     = _s["sound"]
 _last_sound     = _s["last_sound"]
 _notify_enabled = _s["notifications"]
 _pinned         = _s["pinned"]
+_win_x          = _s.get("window_x")
+_win_y          = _s.get("window_y")
 
 def beep():
     if _sound_mode == "mute":
@@ -187,17 +231,27 @@ def _make_tip():
 
 # ── Timer widget ───────────────────────────────────────────────────────────────
 class TimerWidget(ctk.CTkFrame):
-    def __init__(self, parent, deletable=False, on_delete=None, initial_title="", **kwargs):
+    def __init__(self, parent, deletable=False, on_delete=None, initial_title="",
+                 initial_duration=15 * 60, initial_remaining=None, initial_state="idle", **kwargs):
         super().__init__(parent, fg_color="transparent", border_width=0, corner_radius=8, **kwargs)
-        self.duration_seconds = 15 * 60
-        self.remaining_seconds = 15 * 60
-        self.state = "idle"
+        self.duration_seconds = initial_duration
         self.after_id = None
-        self.last_valid_display = "15:00"
         self.editing_countdown = False
-        self.display_var = ctk.StringVar(value="15:00")
         self.edit_var = ctk.StringVar()
-        self._build(deletable, on_delete, initial_title)
+        # Restore mid-run timers as paused; treat finished as idle
+        if initial_state in ("running", "paused") and initial_remaining is not None and initial_remaining > 0:
+            self.remaining_seconds = initial_remaining
+            self.state = "idle"
+            self.last_valid_display = fmt(initial_duration)
+            self.display_var = ctk.StringVar(value=fmt(initial_remaining))
+            self._build(deletable, on_delete, initial_title)
+            root.after_idle(lambda: self._set_state("paused"))
+        else:
+            self.remaining_seconds = initial_duration
+            self.state = "idle"
+            self.last_valid_display = fmt(initial_duration)
+            self.display_var = ctk.StringVar(value=fmt(initial_duration))
+            self._build(deletable, on_delete, initial_title)
 
     def _build(self, deletable, on_delete, initial_title=""):
         if deletable:
@@ -219,19 +273,23 @@ class TimerWidget(ctk.CTkFrame):
             del_btn.bind("<Enter>", lambda e: (del_tip.place(x=34, y=7), del_tip.lift()))
             del_btn.bind("<Leave>", lambda e: del_tip.place_forget())
 
-        self.title_var = ctk.StringVar(value=initial_title)
         self.title_entry = ctk.CTkEntry(
             self,
-            placeholder_text="Click to enter title",
-            textvariable=self.title_var,
             border_width=0,
             fg_color="transparent",
             font=ctk.CTkFont(size=16),
             justify="center",
         )
+        if initial_title:
+            self.title_entry.insert(0, initial_title)
+            self.title_entry.configure(text_color=_TITLE_TEXT_COLOR)
+        else:
+            self.title_entry.insert(0, _TITLE_PLACEHOLDER)
+            self.title_entry.configure(text_color=_TITLE_PLACEHOLDER_COLOR)
         self.title_entry.pack(fill="x", padx=(36, 36), pady=(6, 0))
+        self.title_entry.bind("<FocusIn>",  self._title_focus_in)
+        self.title_entry.bind("<FocusOut>", self._title_focus_out)
         self.title_entry.bind("<Return>", lambda e: self.focus())
-        self.title_entry.bind("<FocusOut>", lambda e: _save_settings())
 
         self.countdown_frame = ctk.CTkFrame(self, fg_color="transparent", border_width=0)
         self.countdown_frame.pack(pady=(2, 2))
@@ -268,6 +326,18 @@ class TimerWidget(ctk.CTkFrame):
 
         self._set_state("idle")
 
+    # ── Title placeholder ──────────────────────────────────────────────────────
+    def _title_focus_in(self, event=None):
+        if self.title_entry.get() == _TITLE_PLACEHOLDER:
+            self.title_entry.delete(0, "end")
+            self.title_entry.configure(text_color=_TITLE_TEXT_COLOR)
+
+    def _title_focus_out(self, event=None):
+        if self.title_entry.get() == "":
+            self.title_entry.insert(0, _TITLE_PLACEHOLDER)
+            self.title_entry.configure(text_color=_TITLE_PLACEHOLDER_COLOR)
+        _save_settings()
+
     # ── Flash ──────────────────────────────────────────────────────────────────
     def flash_invalid(self, step=0):
         if step < len(_FLASH_COLORS):
@@ -288,7 +358,7 @@ class TimerWidget(ctk.CTkFrame):
             self.display_var.set("Done!")
             self._set_state("finished")
             beep()
-            notify(self.title_var.get().strip(), self.last_valid_display)
+            notify(self.title_entry.get().strip(), self.last_valid_display)
         else:
             self.display_var.set(fmt(self.remaining_seconds))
             self.after_id = root.after(1000, self._tick)
@@ -398,8 +468,6 @@ root.resizable(True, True)
 root.minsize(250, 130)
 
 # ── Timers ─────────────────────────────────────────────────────────────────────
-MAX_TIMERS = 5
-
 timers_frame = ctk.CTkFrame(root, fg_color="transparent")
 timers_frame.pack(fill="x")
 
@@ -420,7 +488,7 @@ def _snap_h(n):
         return h
     return _snap_heights.get(n)
 
-def add_timer(deletable=False, initial_title=""):
+def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initial_remaining=None, initial_state="idle"):
     if len(timers) >= MAX_TIMERS:
         return
     sep = None
@@ -428,7 +496,8 @@ def add_timer(deletable=False, initial_title=""):
         sep = ctk.CTkFrame(timers_frame, height=1, fg_color=("#444444", "#333333"))
         sep.pack(fill="x", padx=12, pady=2)
     tw = TimerWidget(timers_frame, deletable=deletable, on_delete=lambda: remove_timer(tw),
-                     initial_title=initial_title)
+                     initial_title=initial_title, initial_duration=initial_duration,
+                     initial_remaining=initial_remaining, initial_state=initial_state)
     tw.pack(fill="x")
     timers.append((sep, tw))
     _update_add_btn()
@@ -693,12 +762,13 @@ _set_sound(_sound_mode, preview=False)
 if _first_boot:
     add_timer(deletable=False, initial_title="About Time")
 else:
-    _saved_titles = _s.get("titles")
-    if not isinstance(_saved_titles, list) or not _saved_titles:
-        _saved_titles = [""]
-    _saved_titles = [t if isinstance(t, str) else "" for t in _saved_titles[:MAX_TIMERS]]
-    for i, _t in enumerate(_saved_titles):
-        add_timer(deletable=(i > 0), initial_title=_t)
+    _saved_timers = _s.get("timers") or [{"title": "", "duration": 15 * 60}]
+    for i, _t in enumerate(_saved_timers):
+        title = _t["title"] if (i > 0 or _t["title"]) else "About Time"
+        add_timer(deletable=(i > 0), initial_title=title,
+                  initial_duration=_t["duration"],
+                  initial_remaining=_t.get("remaining"),
+                  initial_state=_t.get("state", "idle"))
 
 def _on_close():
     _save_settings()
@@ -706,5 +776,10 @@ def _on_close():
 
 root.bind("<Configure>", _on_resize)
 root.protocol("WM_DELETE_WINDOW", _on_close)
+
+# Restore window position — loose bounds allow multi-monitor layouts (negative or large x/y)
+if _win_x is not None and _win_y is not None:
+    if -32000 <= _win_x <= 32000 and -32000 <= _win_y <= 32000:
+        root.geometry(f"+{_win_x}+{_win_y}")
 
 root.mainloop()
