@@ -5,6 +5,8 @@ import re
 import json
 import os
 
+__version__ = "0.6.0"
+
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
 
