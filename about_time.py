@@ -79,15 +79,33 @@ def _load_settings():
         win_y = data.get("window_y")
         if not isinstance(win_x, int) or not isinstance(win_y, int):
             win_x = win_y = None
+        # New format: list of per-timer dicts. Fall back to legacy "titles" list.
+        raw_timers = data.get("timers")
+        if isinstance(raw_timers, list):
+            timer_data = []
+            for t in raw_timers[:MAX_TIMERS]:
+                if not isinstance(t, dict):
+                    continue
+                title = t.get("title", "")
+                if not isinstance(title, str):
+                    title = ""
+                dur = t.get("duration", 15 * 60)
+                if not isinstance(dur, int) or not (1 <= dur <= 359999):
+                    dur = 15 * 60
+                timer_data.append({"title": title, "duration": dur})
+        else:
+            # Migrate from legacy "titles" list
+            timer_data = [{"title": t if isinstance(t, str) else "", "duration": 15 * 60}
+                          for t in (titles or [""])]
         return {
             "volume":        vol,
             "sound":         sound,
             "last_sound":    last_sound,
             "notifications": bool(data.get("notifications", defaults["notifications"])),
             "pinned":        bool(data.get("pinned", defaults["pinned"])),
-            "titles":        titles,
             "window_x":      win_x,
             "window_y":      win_y,
+            "timers":        timer_data,
         }
     except Exception:
         return defaults
