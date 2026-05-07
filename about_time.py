@@ -743,7 +743,10 @@ if _first_boot:
 else:
     _saved_timers = _s.get("timers") or [{"title": "", "duration": 15 * 60}]
     for i, _t in enumerate(_saved_timers):
-        add_timer(deletable=(i > 0), initial_title=_t["title"], initial_duration=_t["duration"])
+        add_timer(deletable=(i > 0), initial_title=_t["title"],
+                  initial_duration=_t["duration"],
+                  initial_remaining=_t.get("remaining"),
+                  initial_state=_t.get("state", "idle"))
 
 def _on_close():
     _save_settings()
