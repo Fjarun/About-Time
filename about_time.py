@@ -102,6 +102,8 @@ def _save_settings():
                 "last_sound":    _last_sound,
                 "notifications": _notify_enabled,
                 "pinned":        topmost_var.get(),
+                "window_x":      root.winfo_x(),
+                "window_y":      root.winfo_y(),
                 "titles":        [tw.title_var.get() for (_, tw) in timers],
             }, f, indent=2)
     except Exception:
