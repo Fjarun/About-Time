@@ -93,7 +93,13 @@ def _load_settings():
                 dur = t.get("duration", 15 * 60)
                 if not isinstance(dur, int) or not (1 <= dur <= 359999):
                     dur = 15 * 60
-                timer_data.append({"title": title, "duration": dur})
+                rem = t.get("remaining", dur)
+                if not isinstance(rem, int) or not (0 <= rem <= dur):
+                    rem = dur
+                state = t.get("state", "idle")
+                if state not in ("idle", "running", "paused", "finished"):
+                    state = "idle"
+                timer_data.append({"title": title, "duration": dur, "remaining": rem, "state": state})
         else:
             # Migrate from legacy "titles" list
             timer_data = [{"title": t if isinstance(t, str) else "", "duration": 15 * 60}
