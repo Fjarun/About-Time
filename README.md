@@ -10,15 +10,19 @@ This project was made to account for a personal need for an always-on-top timer 
 
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
 - Run up to **5 simultaneous countdown timers** at once, each independently named and tracked
-- Custom time input per timer (maximum 99:59:59)
-- Name each timer per task for easy multi-task tracking
-- Timers start automatically when a time is entered
-- Click the countdown display to edit the time at any point
-- Flexible input: plain numbers assumed as minutes, or suffix with `s`, `m`, or `h`
-- **Custom notification chimes** — choose short, medium, or long from a family of matched notification sounds, all designed to feel consistent
+- Custom time input per timer (maximum 99:59:59), with flexible input: plain numbers assumed as minutes, or suffix with `s`, `m`, or `h`
+- Click the countdown display to edit the time at any point — even mid-run
+- **Windows desktop notifications** — opt-in toast alerts when any timer finishes, showing the timer's name or duration if untitled
+
+### Sounds
+
+- Three notification chimes — short, medium, and long — designed as a matched family with consistent tone and feel
 - **Mute option** — silence all timer alerts for distraction-free or shared-space use
-- **Volume control** — fine-tune notification volume to your preference in 5% increments, from full to silent
-- Sound selector always visible, with instant preview on click so you know exactly what you're setting
-- **Windows desktop notifications** — opt-in toast notifications when any timer finishes, showing the timer's name or duration if untitled
-- Notification toggle always accessible, off by default for distraction-free use
-- **Settings persistence** — your sound choice, volume, always-on-top state, and notification preference are remembered between sessions
+- **Volume control** — adjust in 5% increments directly from the main window
+- Sound selector always visible with instant preview on click, so you always know what you're setting
+
+### Persistence
+
+- Window position, timer count, timer names, and individual durations are all remembered between sessions
+- Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
+- Sound choice, volume, always-on-top state, and notification preference saved automatically
