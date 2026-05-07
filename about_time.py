@@ -429,8 +429,6 @@ root.resizable(True, True)
 root.minsize(250, 130)
 
 # ── Timers ─────────────────────────────────────────────────────────────────────
-MAX_TIMERS = 5
-
 timers_frame = ctk.CTkFrame(root, fg_color="transparent")
 timers_frame.pack(fill="x")
 
