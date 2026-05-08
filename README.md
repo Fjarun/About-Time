@@ -23,6 +23,6 @@ This project was made to account for a personal need for an always-on-top timer 
 
 ### Persistence
 
-- Window position, timer count, timer names, and individual durations are all remembered between sessions
+- Window position, timer count, timer names and durations are all remembered between sessions
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
 - Sound choice, volume, always-on-top state, and notification preference saved automatically
