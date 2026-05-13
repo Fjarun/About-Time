@@ -9,6 +9,7 @@ __version__ = "0.6.0"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
+_wav_lock = threading.Lock()
 
 if sys.platform == "win32":
     from winotify import Notification
