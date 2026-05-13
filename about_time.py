@@ -26,7 +26,7 @@ if sys.platform == "win32":
             b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
             b"data", len(raw)) + raw
 
-    def _sine_segment(freq, duration, tau, volume=0.5, rate=44100, fade_ms=0):
+    def _sine_segment(freq, duration, tau, volume=0.5, rate=_SAMPLE_RATE, fade_ms=0):
         n = int(rate * duration)
         fade_samples = int(rate * fade_ms / 1000)
         buf = bytearray(n * 2)
