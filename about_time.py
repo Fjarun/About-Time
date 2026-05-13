@@ -140,7 +140,8 @@ def _load_settings():
 def _save_settings():
     try:
         os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
-        with open(_SETTINGS_PATH, "w") as f:
+        tmp = _SETTINGS_PATH + ".tmp"
+        with open(tmp, "w") as f:
             json.dump({
                 "volume":        _vol_pct,
                 "sound":         _sound_mode,
@@ -155,6 +156,7 @@ def _save_settings():
                                    "state": tw.state}
                                   for (_, tw) in timers],
             }, f, indent=2)
+        os.replace(tmp, _SETTINGS_PATH)
     except Exception as e:
         print(f"[About Time] _save_settings failed: {e}", file=sys.stderr)
 
