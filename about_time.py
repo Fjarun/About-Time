@@ -61,7 +61,15 @@ _TITLE_PLACEHOLDER_COLOR = "#aaaaaa"
 _TITLE_TEXT_COLOR = "#ffffff"
 
 # ── Settings persistence ────────────────────────────────────────────────────────
-_SETTINGS_PATH = os.path.join(os.getenv("APPDATA", ""), "About Time", "settings.json")
+def _resolve_settings_path():
+    appdata = os.getenv("APPDATA", "")
+    if appdata and os.path.isabs(appdata) and os.path.isdir(appdata):
+        return os.path.join(appdata, "About Time", "settings.json")
+    fallback = os.path.join(os.path.expanduser("~"), "About Time", "settings.json")
+    print(f"[About Time] APPDATA invalid or missing, using fallback: {fallback}", file=sys.stderr)
+    return fallback
+
+_SETTINGS_PATH = _resolve_settings_path()
 _first_boot = not os.path.exists(_SETTINGS_PATH)
 
 def _load_settings():
