@@ -177,7 +177,9 @@ _win_y          = _s.get("window_y")
 def beep():
     if _sound_mode == "mute":
         return
-    threading.Thread(target=_play, args=(_WAVS.get(_sound_mode),), daemon=True).start()
+    with _wav_lock:
+        wav = _WAVS.get(_sound_mode)
+    threading.Thread(target=_play, args=(wav,), daemon=True).start()
 
 def notify(title, duration):
     if not _notify_enabled or sys.platform != "win32":
