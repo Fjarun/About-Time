@@ -466,7 +466,8 @@ class TimerWidget(ctk.CTkFrame):
 ctk.set_appearance_mode("dark")
 root = ctk.CTk()
 root.title("About Time")
-root.iconbitmap(os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico"))
+_base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+root.iconbitmap(os.path.join(_base, "icon.ico"))
 root.resizable(True, True)
 root.minsize(250, 130)
 
