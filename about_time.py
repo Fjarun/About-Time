@@ -46,9 +46,13 @@ if sys.platform == "win32":
         return struct.pack(f"<{len(samples)}h", *samples)
 
     def _build_wavs(vol):
-        _WAVS["short"]  = _wrap_wav(_apply_reverb(_sine_segment(880, 0.4, 0.18, volume=vol)))
-        _WAVS["medium"] = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
-        _WAVS["long"]   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
+        short  = _wrap_wav(_apply_reverb(_sine_segment(880, 0.4, 0.18, volume=vol)))
+        medium = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
+        long_  = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
+        with _wav_lock:
+            _WAVS["short"]  = short
+            _WAVS["medium"] = medium
+            _WAVS["long"]   = long_
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
