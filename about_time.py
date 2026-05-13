@@ -66,7 +66,8 @@ _first_boot = not os.path.exists(_SETTINGS_PATH)
 
 def _load_settings():
     defaults = {"volume": 50, "sound": "short", "last_sound": "short",
-                "notifications": False, "pinned": False}
+                "notifications": False, "pinned": False,
+                "window_x": None, "window_y": None, "timers": []}
     try:
         with open(_SETTINGS_PATH) as f:
             data = json.load(f)
