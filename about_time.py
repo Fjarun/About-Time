@@ -122,7 +122,8 @@ def _load_settings():
             "window_y":      win_y,
             "timers":        timer_data,
         }
-    except Exception:
+    except Exception as e:
+        print(f"[About Time] _load_settings failed: {e}", file=sys.stderr)
         return defaults
 
 def _save_settings():
