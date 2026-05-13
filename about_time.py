@@ -144,8 +144,8 @@ def _save_settings():
                                    "state": tw.state}
                                   for (_, tw) in timers],
             }, f, indent=2)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[About Time] _save_settings failed: {e}", file=sys.stderr)
 
 _s = _load_settings()
 _vol_pct        = _s["volume"]
