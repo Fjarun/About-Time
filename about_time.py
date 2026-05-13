@@ -41,7 +41,7 @@ if sys.platform == "win32":
         samples = list(struct.unpack(f"<{n}h", raw)) + [0] * tail
         for i in range(delay, len(samples)):
             val = samples[i] + int(samples[i - delay] * echo_amp)
-            samples[i] = max(-32767, min(32767, val))
+            samples[i] = _clamp16(val)
         return struct.pack(f"<{len(samples)}h", *samples)
 
     def _build_wavs(vol):
