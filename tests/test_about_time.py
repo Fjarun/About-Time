@@ -431,7 +431,11 @@ class TestLoadSettingsPartialData:
         assert r["sound"] == "short"
         assert r["notifications"] is False
         assert r["window_x"] is None
-        assert r["timers"] == []
+        # No "timers" key and no "titles" key → legacy path fires with
+        # titles=None → uses [""] → one timer with empty title, default duration
+        assert len(r["timers"]) == 1
+        assert r["timers"][0]["title"] == ""
+        assert r["timers"][0]["duration"] == 15 * 60
 
     def test_empty_json_object_gives_all_defaults(self, load):
         fn, path = load
@@ -439,7 +443,9 @@ class TestLoadSettingsPartialData:
         r = fn()
         assert r["volume"] == 50
         assert r["sound"] == "short"
-        assert r["timers"] == []
+        # Same legacy path: no "timers" key → one empty-title timer
+        assert len(r["timers"]) == 1
+        assert r["timers"][0]["title"] == ""
 
 
 # ---------------------------------------------------------------------------
