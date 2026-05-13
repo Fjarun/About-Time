@@ -14,6 +14,9 @@ if sys.platform == "win32":
     from winotify import Notification
     import winsound, struct, math
 
+    def _clamp16(v):
+        return max(-32767, min(32767, v))
+
     def _wrap_wav(raw, rate=44100):
         return struct.pack("<4sI4s4sIHHIIHH4sI",
             b"RIFF", 36 + len(raw), b"WAVE",
