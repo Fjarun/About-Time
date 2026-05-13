@@ -215,12 +215,12 @@ def parse_input(text):
             return None
         if len(parts) == 2:
             m, s = nums
-            if not (0 <= s <= 59):
+            if not (m >= 0 and 0 <= s <= 59):
                 return None
             total = m * 60 + s
         elif len(parts) == 3:
             h, m, s = nums
-            if not (0 <= m <= 59 and 0 <= s <= 59):
+            if not (h >= 0 and 0 <= m <= 59 and 0 <= s <= 59):
                 return None
             total = h * 3600 + m * 60 + s
         else:
