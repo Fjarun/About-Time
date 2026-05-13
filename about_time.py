@@ -31,7 +31,7 @@ if sys.platform == "win32":
             t = i / rate
             fade = (n - i) / fade_samples if fade_samples and i >= n - fade_samples else 1.0
             val = int(volume * math.exp(-t / tau) * 32767 * math.sin(2 * math.pi * freq * t) * fade)
-            struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, val)))
+            struct.pack_into("<h", buf, i * 2, _clamp16(val))
         return bytes(buf)
 
     def _apply_reverb(raw, rate=44100, delay_ms=70, echo_amp=0.30, tail_ms=350):
