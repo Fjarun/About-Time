@@ -37,7 +37,7 @@ if sys.platform == "win32":
             struct.pack_into("<h", buf, i * 2, _clamp16(val))
         return bytes(buf)
 
-    def _apply_reverb(raw, rate=44100, delay_ms=70, echo_amp=0.30, tail_ms=350):
+    def _apply_reverb(raw, rate=_SAMPLE_RATE, delay_ms=70, echo_amp=0.30, tail_ms=350):
         n = len(raw) // 2
         tail = int(rate * tail_ms / 1000)
         delay = int(rate * delay_ms / 1000)
