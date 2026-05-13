@@ -91,7 +91,7 @@ def _load_settings():
         if last_sound not in ("short", "medium", "long"):
             last_sound = defaults["last_sound"]
         raw_titles = data.get("titles")
-        titles = raw_titles if isinstance(raw_titles, list) else None
+        titles = raw_titles[:MAX_TIMERS] if isinstance(raw_titles, list) else None
         win_x = data.get("window_x")
         win_y = data.get("window_y")
         if not isinstance(win_x, int) or not isinstance(win_y, int):
