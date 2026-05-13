@@ -184,7 +184,8 @@ def beep():
 def notify(title, duration):
     if not _notify_enabled or sys.platform != "win32":
         return
-    msg = f"Your timer '{title}' has finished." if title else f"Your {duration} timer has finished."
+    safe_title = str(title)[:50].strip() if title else ""
+    msg = f"Your timer '{safe_title}' has finished." if safe_title else f"Your {duration} timer has finished."
     def _send():
         toast = Notification(app_id="About Time", title="Timer finished", msg=msg)
         toast.show()
