@@ -389,7 +389,8 @@ class TimerWidget(ctk.CTkFrame):
             self.display_var.set("Done!")
             self._set_state("finished")
             beep()
-            notify(self.title_entry.get().strip(), self.last_valid_display)
+            _title = self.title_entry.get().strip()
+            notify(_title if _title != _TITLE_PLACEHOLDER else "", self.last_valid_display)
         else:
             self.display_var.set(fmt(self.remaining_seconds))
             self.after_id = root.after(1000, self._tick)
