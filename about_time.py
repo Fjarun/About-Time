@@ -5,22 +5,28 @@ import re
 import json
 import os
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
+_wav_lock = threading.Lock()
 
 if sys.platform == "win32":
     from winotify import Notification
     import winsound, struct, math
 
-    def _wrap_wav(raw, rate=44100):
+    _SAMPLE_RATE = 44100
+
+    def _clamp16(v):
+        return max(-32768, min(32767, v))
+
+    def _wrap_wav(raw, rate=_SAMPLE_RATE):
         return struct.pack("<4sI4s4sIHHIIHH4sI",
             b"RIFF", 36 + len(raw), b"WAVE",
             b"fmt ", 16, 1, 1, rate, rate * 2, 2, 16,
             b"data", len(raw)) + raw
 
-    def _sine_segment(freq, duration, tau, volume=0.5, rate=44100, fade_ms=0):
+    def _sine_segment(freq, duration, tau, volume=0.5, rate=_SAMPLE_RATE, fade_ms=0):
         n = int(rate * duration)
         fade_samples = int(rate * fade_ms / 1000)
         buf = bytearray(n * 2)
@@ -28,23 +34,27 @@ if sys.platform == "win32":
             t = i / rate
             fade = (n - i) / fade_samples if fade_samples and i >= n - fade_samples else 1.0
             val = int(volume * math.exp(-t / tau) * 32767 * math.sin(2 * math.pi * freq * t) * fade)
-            struct.pack_into("<h", buf, i * 2, max(-32767, min(32767, val)))
+            struct.pack_into("<h", buf, i * 2, _clamp16(val))
         return bytes(buf)
 
-    def _apply_reverb(raw, rate=44100, delay_ms=70, echo_amp=0.30, tail_ms=350):
+    def _apply_reverb(raw, rate=_SAMPLE_RATE, delay_ms=70, echo_amp=0.30, tail_ms=350):
         n = len(raw) // 2
         tail = int(rate * tail_ms / 1000)
         delay = int(rate * delay_ms / 1000)
         samples = list(struct.unpack(f"<{n}h", raw)) + [0] * tail
         for i in range(delay, len(samples)):
             val = samples[i] + int(samples[i - delay] * echo_amp)
-            samples[i] = max(-32767, min(32767, val))
+            samples[i] = _clamp16(val)
         return struct.pack(f"<{len(samples)}h", *samples)
 
     def _build_wavs(vol):
-        _WAVS["short"]  = _wrap_wav(_apply_reverb(_sine_segment(880, 0.4, 0.18, volume=vol)))
-        _WAVS["medium"] = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
-        _WAVS["long"]   = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
+        short  = _wrap_wav(_apply_reverb(_sine_segment(880, 0.4, 0.18, volume=vol)))
+        medium = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.35, 0.18, volume=vol)))
+        long_  = _wrap_wav(_apply_reverb(_sine_segment(587, 0.15, 0.12, volume=vol) + _sine_segment(880, 0.15, 0.12, volume=vol) + _sine_segment(1175, 0.25, 0.18, volume=vol, fade_ms=10)))
+        with _wav_lock:
+            _WAVS["short"]  = short
+            _WAVS["medium"] = medium
+            _WAVS["long"]   = long_
 
     def _play(wav):
         winsound.PlaySound(wav, winsound.SND_MEMORY)
@@ -61,12 +71,21 @@ _TITLE_PLACEHOLDER_COLOR = "#aaaaaa"
 _TITLE_TEXT_COLOR = "#ffffff"
 
 # ── Settings persistence ────────────────────────────────────────────────────────
-_SETTINGS_PATH = os.path.join(os.getenv("APPDATA", ""), "About Time", "settings.json")
+def _resolve_settings_path():
+    appdata = os.getenv("APPDATA", "")
+    if appdata and os.path.isabs(appdata) and os.path.isdir(appdata):
+        return os.path.join(appdata, "About Time", "settings.json")
+    fallback = os.path.join(os.path.expanduser("~"), "About Time", "settings.json")
+    print(f"[About Time] APPDATA invalid or missing, using fallback: {fallback}", file=sys.stderr)
+    return fallback
+
+_SETTINGS_PATH = _resolve_settings_path()
 _first_boot = not os.path.exists(_SETTINGS_PATH)
 
 def _load_settings():
     defaults = {"volume": 50, "sound": "short", "last_sound": "short",
-                "notifications": False, "pinned": False}
+                "notifications": False, "pinned": False,
+                "window_x": None, "window_y": None, "timers": []}
     try:
         with open(_SETTINGS_PATH) as f:
             data = json.load(f)
@@ -82,7 +101,7 @@ def _load_settings():
         if last_sound not in ("short", "medium", "long"):
             last_sound = defaults["last_sound"]
         raw_titles = data.get("titles")
-        titles = raw_titles if isinstance(raw_titles, list) else None
+        titles = raw_titles[:MAX_TIMERS] if isinstance(raw_titles, list) else None
         win_x = data.get("window_x")
         win_y = data.get("window_y")
         if not isinstance(win_x, int) or not isinstance(win_y, int):
@@ -121,13 +140,15 @@ def _load_settings():
             "window_y":      win_y,
             "timers":        timer_data,
         }
-    except Exception:
+    except Exception as e:
+        print(f"[About Time] _load_settings failed: {e}", file=sys.stderr)
         return defaults
 
 def _save_settings():
+    tmp = _SETTINGS_PATH + ".tmp"
     try:
         os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
-        with open(_SETTINGS_PATH, "w") as f:
+        with open(tmp, "w") as f:
             json.dump({
                 "volume":        _vol_pct,
                 "sound":         _sound_mode,
@@ -142,8 +163,13 @@ def _save_settings():
                                    "state": tw.state}
                                   for (_, tw) in timers],
             }, f, indent=2)
-    except Exception:
-        pass
+        os.replace(tmp, _SETTINGS_PATH)
+    except Exception as e:
+        print(f"[About Time] _save_settings failed: {e}", file=sys.stderr)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 _s = _load_settings()
 _vol_pct        = _s["volume"]
@@ -157,12 +183,15 @@ _win_y          = _s.get("window_y")
 def beep():
     if _sound_mode == "mute":
         return
-    threading.Thread(target=_play, args=(_WAVS.get(_sound_mode),), daemon=True).start()
+    with _wav_lock:
+        wav = _WAVS.get(_sound_mode)
+    threading.Thread(target=_play, args=(wav,), daemon=True).start()
 
 def notify(title, duration):
     if not _notify_enabled or sys.platform != "win32":
         return
-    msg = f"Your timer '{title}' has finished." if title else f"Your {duration} timer has finished."
+    safe_title = str(title)[:50].strip() if title else ""
+    msg = f"Your timer '{safe_title}' has finished." if safe_title else f"Your {duration} timer has finished."
     def _send():
         toast = Notification(app_id="About Time", title="Timer finished", msg=msg)
         toast.show()
@@ -192,12 +221,12 @@ def parse_input(text):
             return None
         if len(parts) == 2:
             m, s = nums
-            if not (0 <= s <= 59):
+            if not (m >= 0 and 0 <= s <= 59):
                 return None
             total = m * 60 + s
         elif len(parts) == 3:
             h, m, s = nums
-            if not (0 <= m <= 59 and 0 <= s <= 59):
+            if not (h >= 0 and 0 <= m <= 59 and 0 <= s <= 59):
                 return None
             total = h * 3600 + m * 60 + s
         else:
@@ -360,7 +389,8 @@ class TimerWidget(ctk.CTkFrame):
             self.display_var.set("Done!")
             self._set_state("finished")
             beep()
-            notify(self.title_entry.get().strip(), self.last_valid_display)
+            _title = self.title_entry.get().strip()
+            notify(_title if _title != _TITLE_PLACEHOLDER else "", self.last_valid_display)
         else:
             self.display_var.set(fmt(self.remaining_seconds))
             self.after_id = root.after(1000, self._tick)
@@ -466,6 +496,8 @@ class TimerWidget(ctk.CTkFrame):
 ctk.set_appearance_mode("dark")
 root = ctk.CTk()
 root.title("About Time")
+_base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+root.iconbitmap(os.path.join(_base, "icon.ico"))
 root.resizable(True, True)
 root.minsize(250, 130)
 
