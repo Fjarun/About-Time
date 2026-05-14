@@ -145,9 +145,9 @@ def _load_settings():
         return defaults
 
 def _save_settings():
+    tmp = _SETTINGS_PATH + ".tmp"
     try:
         os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
-        tmp = _SETTINGS_PATH + ".tmp"
         with open(tmp, "w") as f:
             json.dump({
                 "volume":        _vol_pct,
@@ -166,6 +166,10 @@ def _save_settings():
         os.replace(tmp, _SETTINGS_PATH)
     except Exception as e:
         print(f"[About Time] _save_settings failed: {e}", file=sys.stderr)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 _s = _load_settings()
 _vol_pct        = _s["volume"]
