@@ -12,6 +12,7 @@ This project was made to account for a personal need for an always-on-top timer 
 
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
 - Run up to **5 simultaneous countdown timers** at once, each independently named and tracked
+- Add timers one at a time via the **Add timer** button; remove any individual slot with its **x** button — no need to manage a fixed set
 - Custom time input per timer (maximum 99:59:59), with flexible input: plain numbers assumed as minutes, or suffix with `s`, `m`, or `h`
 - Click the countdown display to edit the time at any point — even mid-run
 - **Windows desktop notifications** — opt-in toast alerts when any timer finishes, showing the timer's name or duration if untitled
