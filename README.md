@@ -35,3 +35,19 @@ This project was made to account for a personal need for an always-on-top timer 
 - Window position, timer count, timer names and durations are all remembered between sessions
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
 - Sound choice, volume, always-on-top state, and notification preference saved automatically
+
+## Download
+
+Grab the latest `.exe` from [Releases](https://github.com/Fjarun/About-Time/releases) — no install required, runs directly on Windows.
+
+No Python needed to run the release build.
+
+## Tech Stack
+
+| | |
+|---|---|
+| Language | Python 3.x |
+| UI | customtkinter |
+| Audio | winsound + struct (WAV synthesised in-memory — no audio files) |
+| Notifications | winotify (Windows toast) |
+| Build | PyInstaller |
