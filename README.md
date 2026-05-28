@@ -1,6 +1,20 @@
-# About Time - Always-on-Top Timer App
+# About Time
 
-**Version:** v0.7.0
+![Version](https://img.shields.io/badge/version-v0.7.0-blue)
+![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
+![Status](https://img.shields.io/badge/status-Active%20Development-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+**A free Windows desktop timer that stays on top of everything else.**
+
+Run up to 5 named countdown timers simultaneously, each with its own label — visible over your browser, IDE, or any other window. Optional notification sounds and Windows toast alerts when each one finishes.
+
+Built as a personal productivity tool and a practical exercise in AI-assisted development with Claude Code.
+
+---
+
+## Overview
 
 > **This project is in active development.** Features and behaviour may change between releases.
 
