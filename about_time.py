@@ -5,7 +5,7 @@ import re
 import json
 import os
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -436,19 +436,19 @@ class TimerWidget(ctk.CTkFrame):
         for btn in (self.start_btn, self.restart_btn, self.stop_btn, self.resume_btn, self.pause_btn):
             btn.pack_forget()
         if new_state == "idle":
-            self.start_btn.pack(padx=4, pady=2)
+            self.start_btn.pack(padx=4, pady=2, anchor="center")
         elif new_state == "running":
             self.restart_btn.configure(width=BTN_W)
-            self.restart_btn.pack(side="left", padx=4, pady=2)
-            self.pause_btn.pack(side="left", padx=4, pady=2)
+            self.restart_btn.pack(side="left", padx=4, pady=2, anchor="center")
+            self.pause_btn.pack(side="left", padx=4, pady=2, anchor="center")
         elif new_state == "paused":
             btn_w = max(40, (root.winfo_width() - 70) // 3)
             for btn in (self.stop_btn, self.resume_btn, self.restart_btn):
                 btn.configure(width=btn_w)
-                btn.pack(side="left", padx=2, pady=2)
+                btn.pack(side="left", padx=2, pady=2, anchor="center")
         elif new_state == "finished":
             self.restart_btn.configure(width=BTN_W)
-            self.restart_btn.pack(padx=4, pady=2)
+            self.restart_btn.pack(padx=4, pady=2, anchor="center")
 
     # ── Countdown click-to-edit ────────────────────────────────────────────────
     def _on_countdown_click(self, event=None):
