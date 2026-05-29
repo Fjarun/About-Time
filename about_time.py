@@ -5,7 +5,7 @@ import re
 import json
 import os
 
-__version__ = "0.7.2"
+__version__ = "0.7.3"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -345,9 +345,8 @@ class TimerWidget(ctk.CTkFrame):
         self.countdown_entry.bind("<Return>", self._on_entry_return)
         self.countdown_entry.bind("<FocusOut>", self._commit_countdown)
 
-        self.btn_frame = ctk.CTkFrame(self, fg_color="transparent", height=36)
-        self.btn_frame.pack(pady=(2, 6), fill="x")
-        self.btn_frame.pack_propagate(False)  # Force frame to maintain height, prevent button squashing
+        self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.btn_frame.pack(pady=(2, 6))
 
         _ibtn = {"font": ctk.CTkFont(size=16), "width": BTN_W}
         self.start_btn   = ctk.CTkButton(self.btn_frame, text="▶", command=self._do_start,   **_ibtn)
