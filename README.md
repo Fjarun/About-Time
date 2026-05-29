@@ -44,12 +44,6 @@ No Python or code needed.
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
 - Sound choice, volume, always-on-top state, and notification preference saved automatically
 
-## Download
-
-Grab the latest `.exe` from [Releases](https://github.com/Fjarun/About-Time/releases) — no install required, runs directly on Windows.
-
-No Python needed to run the release build.
-
 ## Tech Stack
 
 | | |
