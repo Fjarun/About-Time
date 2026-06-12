@@ -33,7 +33,37 @@
 2. **Code review (BLOCKED):** `/code-review` skill requires committed diff; presentation branch is clean
    - Built-in skill limitation documented in D:\ClaudeCode\CLAUDE.md
 
-## Next Steps
+## RESOLVED (June 12, 2026 — v0.7.5)
+
+**Root cause found by instrumented trace (`debug_layout2.py`):**
+
+1. Countdown edit swapped label (pady=1) for entry (pady=5), growing the
+   timer ~13px; commit repacked the label with pady=5, permanently
+   inflating any edited timer.
+2. `_fit_window()` forced window height from a sticky calibrated formula
+   (`_snap_unit` derived once, never refreshed) and clamped `maxsize` to it.
+3. When live required height exceeded the forced height, Tk's packer
+   crushed the bottom-most widgets — the last timer's buttons squashed
+   to 15px or vanished (reproduced: `start_btn 72x15`).
+4. `maxsize` clamp + resize snap blocked manual recovery. Poisoned until
+   restart. Matches every observed symptom.
+
+**Fix applied:**
+- Replaced `_snap_heights`/`_snap_unit`/`_snap_btn_offset` calibration with
+  `_content_heights()` — live measurement every call, nothing sticky.
+- `maxsize` now always tracks live required height; can never clamp below it.
+- `_set_state()` and countdown edit open/commit call
+  `_fit_window(preserve=True)` — absorbs height changes while keeping a
+  user-collapsed view aligned to live timer boundaries.
+- Unified label/entry packing (`padx=8, pady=1`) — no more drift on edit.
+- `_on_resize` defers measurement to idle time (no idletask pump inside
+  Configure dispatch).
+
+**Verified:** poison scenario re-run clean (buttons 72x28 everywhere,
+maxsize tracks req); baseline trace clean; 93/93 tests pass.
+Repro harnesses kept untracked: `debug_layout.py`, `debug_layout2.py`.
+
+## Next Steps (original, superseded)
 
 ### Immediate (next session)
 1. Use `debugger` agent to trace button frame behavior:
