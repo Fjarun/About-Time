@@ -5,7 +5,7 @@ import re
 import json
 import os
 
-__version__ = "0.7.5"
+__version__ = "0.7.6"
 
 # Whitelist hook test: this file should be committed
 
@@ -505,7 +505,7 @@ ctk.set_appearance_mode("dark")
 root = ctk.CTk()
 root.title("About Time")
 _base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-root.iconbitmap(os.path.join(_base, "icon.ico"))
+root.iconbitmap(os.path.join(_base, "assets", "icon.ico"))
 root.resizable(True, True)
 root.minsize(250, 130)
 
