@@ -5,7 +5,7 @@ import re
 import json
 import os
 
-__version__ = "0.7.6"
+__version__ = "0.7.7"
 
 # Whitelist hook test: this file should be committed
 
