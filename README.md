@@ -6,8 +6,6 @@
 ![Status](https://img.shields.io/badge/status-Active%20Development-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**Version:** v0.7.0
-
 > **This project is in active development.** Features and behaviour may change between releases.
 
 **A free Windows desktop timer that stays on top of everything else.**
