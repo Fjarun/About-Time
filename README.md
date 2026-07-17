@@ -1,12 +1,10 @@
 # About Time - Always-on-Top Timer App
 
-![Version](https://img.shields.io/badge/version-v0.7.1-blue)
+![Version](https://img.shields.io/badge/version-v0.8.0-blue)
 ![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
 ![Status](https://img.shields.io/badge/status-Active%20Development-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
-
-**Version:** v0.7.0
 
 > **This project is in active development.** Features and behaviour may change between releases.
 
@@ -23,6 +21,8 @@ Grab the latest `.exe` from [Releases](https://github.com/Fjarun/About-Time/rele
 No Python or code needed.
 
 ## Features
+
+<img src="Assets/Demo.gif" alt="About Time demo — adding, naming and running timers" align="right" width="300">
 
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
 - Run up to **5 simultaneous countdown timers** at once, each independently named and tracked

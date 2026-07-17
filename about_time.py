@@ -5,7 +5,7 @@ import re
 import json
 import os
 
-__version__ = "0.7.1"
+__version__ = "0.8.0"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -345,9 +345,8 @@ class TimerWidget(ctk.CTkFrame):
         self.countdown_entry.bind("<Return>", self._on_entry_return)
         self.countdown_entry.bind("<FocusOut>", self._commit_countdown)
 
-        self.btn_frame = ctk.CTkFrame(self, fg_color="transparent", height=36)
-        self.btn_frame.pack(pady=(2, 6), fill="x")
-        self.btn_frame.pack_propagate(False)  # Force frame to maintain height, prevent button squashing
+        self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.btn_frame.pack(pady=(2, 6))
 
         _ibtn = {"font": ctk.CTkFont(size=16), "width": BTN_W}
         self.start_btn   = ctk.CTkButton(self.btn_frame, text="▶", command=self._do_start,   **_ibtn)
@@ -436,19 +435,23 @@ class TimerWidget(ctk.CTkFrame):
         for btn in (self.start_btn, self.restart_btn, self.stop_btn, self.resume_btn, self.pause_btn):
             btn.pack_forget()
         if new_state == "idle":
-            self.start_btn.pack(padx=4, pady=2)
+            self.start_btn.pack(padx=4, pady=2, anchor="center")
         elif new_state == "running":
             self.restart_btn.configure(width=BTN_W)
-            self.restart_btn.pack(side="left", padx=4, pady=2)
-            self.pause_btn.pack(side="left", padx=4, pady=2)
+            self.restart_btn.pack(side="left", padx=4, pady=2, anchor="center")
+            self.pause_btn.pack(side="left", padx=4, pady=2, anchor="center")
         elif new_state == "paused":
             btn_w = max(40, (root.winfo_width() - 70) // 3)
             for btn in (self.stop_btn, self.resume_btn, self.restart_btn):
                 btn.configure(width=btn_w)
-                btn.pack(side="left", padx=2, pady=2)
+                btn.pack(side="left", padx=2, pady=2, anchor="center")
         elif new_state == "finished":
             self.restart_btn.configure(width=BTN_W)
-            self.restart_btn.pack(padx=4, pady=2)
+            self.restart_btn.pack(padx=4, pady=2, anchor="center")
+        # Absorb any required-height change so buttons are never squashed.
+        # During _build the widget isn't packed yet; add_timer fits afterwards.
+        if any(t is self for _s, t in timers):
+            _fit_window(preserve=True)
 
     # ── Countdown click-to-edit ────────────────────────────────────────────────
     def _on_countdown_click(self, event=None):
@@ -457,7 +460,8 @@ class TimerWidget(ctk.CTkFrame):
         self.editing_countdown = True
         self.edit_var.set(self.last_valid_display if self.state == "finished" else self.display_var.get())
         self.countdown_label.pack_forget()
-        self.countdown_entry.pack(padx=10, pady=5)
+        self.countdown_entry.pack(padx=8, pady=1)
+        _fit_window(preserve=True)
         self.countdown_entry.focus()
         self.countdown_entry.after(10, lambda: self.countdown_entry.select_range(0, "end"))
 
@@ -468,7 +472,8 @@ class TimerWidget(ctk.CTkFrame):
         text = self.edit_var.get()
         seconds = parse_input(text)
         self.countdown_entry.pack_forget()
-        self.countdown_label.pack(padx=10, pady=5)
+        self.countdown_label.pack(padx=8, pady=1)
+        _fit_window(preserve=True)
         if seconds is None:
             if self.state == "running":
                 self.display_var.set(fmt(self.remaining_seconds))
@@ -498,7 +503,7 @@ ctk.set_appearance_mode("dark")
 root = ctk.CTk()
 root.title("About Time")
 _base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-root.iconbitmap(os.path.join(_base, "icon.ico"))
+root.iconbitmap(os.path.join(_base, "assets", "icon.ico"))
 root.resizable(True, True)
 root.minsize(250, 130)
 
@@ -508,20 +513,22 @@ timers_frame.pack(fill="x")
 
 # Each entry is (separator_or_None, TimerWidget)
 timers = []
-_snap_heights = {}     # timer_count -> measured height (kept for calibration)
-_snap_unit = None      # height increment per timer, derived from first two measurements
-_snap_btn_offset = None  # button frame height removed at MAX_TIMERS, derived from h[5] measurement
 _resize_pending = False
 
-def _snap_h(n):
-    """Formula-based snap height for n timers; falls back to measured if uncalibrated."""
-    base = _snap_heights.get(1)
-    if base and _snap_unit:
-        h = base + (n - 1) * _snap_unit
-        if n == MAX_TIMERS and _snap_btn_offset is not None:
-            h -= _snap_btn_offset
-        return h
-    return _snap_heights.get(n)
+def _content_heights():
+    """Live window heights that fully show the first n timers, for n=1..len(timers).
+
+    Measured from current required geometry every call — never cached, so the
+    targets stay correct as timer states, edits, and counts change."""
+    root.update_idletasks()
+    full = root.winfo_reqheight()
+    out = [full]
+    acc = 0
+    for _sep, tw in reversed(timers[1:]):
+        acc += tw.winfo_reqheight() + 5  # separator: 1px line + 2px pady each side
+        out.append(full - acc)
+    out.reverse()
+    return out
 
 def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initial_remaining=None, initial_state="idle"):
     if len(timers) >= MAX_TIMERS:
@@ -555,41 +562,34 @@ def remove_timer(tw):
     _fit_window()
     _save_settings()
 
-def _fit_window():
-    global _snap_unit, _snap_btn_offset
-    root.update_idletasks()
-    h = root.winfo_reqheight()
-    n = len(timers)
-    _snap_heights[n] = h
-
-    if _snap_unit is None and 1 in _snap_heights and 2 in _snap_heights:
-        _snap_unit = _snap_heights[2] - _snap_heights[1]
-
-    if (_snap_btn_offset is None and _snap_unit is not None
-            and 1 in _snap_heights and MAX_TIMERS in _snap_heights):
-        raw = _snap_heights[1] + (MAX_TIMERS - 1) * _snap_unit
-        _snap_btn_offset = raw - _snap_heights[MAX_TIMERS]
-
-    target = _snap_h(n) or h
-    root.minsize(250, _snap_h(1) or 130)
-    root.maxsize(9999, _snap_h(MAX_TIMERS) or target)
+def _fit_window(preserve=False):
+    heights = _content_heights()
+    if not heights:
+        return
+    if preserve and root.winfo_viewable():
+        # keep the user's collapsed view, but re-aligned to a live boundary
+        cur = root.winfo_height()
+        target = min(heights, key=lambda h: abs(h - cur))
+    else:
+        target = heights[-1]
+    # maxsize must track live required height — clamping below it squashes
+    # the bottom timer's buttons and resize can't recover
+    root.minsize(250, heights[0])
+    root.maxsize(9999, heights[-1])
     root.geometry(f"{root.winfo_width()}x{target}")
 
 # ── Height-snap on resize ──────────────────────────────────────────────────────
 def _snap_candidates():
-    return [h for h in (_snap_h(i) for i in range(1, len(timers) + 1)) if h]
+    return _content_heights()
 
 def _on_resize(event):
     global _resize_pending
-    if event.widget is not root or _resize_pending or not _snap_heights:
+    if event.widget is not root or _resize_pending or not timers:
         return
-    candidates = _snap_candidates()
-    if not candidates:
-        return
-    target = min(candidates, key=lambda h: abs(h - event.height))
-    if event.height != target:
-        _resize_pending = True
-        root.after_idle(_do_snap)
+    # measurement deferred to idle time — _content_heights pumps idletasks,
+    # which is unsafe inside an active Configure dispatch
+    _resize_pending = True
+    root.after_idle(_do_snap)
 
 def _do_snap():
     global _resize_pending
