@@ -5,9 +5,7 @@ import re
 import json
 import os
 
-__version__ = "0.7.9"
-
-# Whitelist hook test: this file should be committed
+__version__ = "0.7.10"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
