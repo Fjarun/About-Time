@@ -14,8 +14,6 @@ About Time keeps your countdowns always visible, no matter what you're working o
 
 This project was made to account for a personal need for an always-on-top timer program, and is an ongoing project built in tandem with Claude Code as a practical exercise in working with AI-assisted development tools.
 
-![About Time demo — adding, naming and running timers](Assets/Demo.gif)
-
 ## Download
 
 Grab the latest `.exe` from [Releases](https://github.com/Fjarun/About-Time/releases) — no install required, runs directly on Windows.
