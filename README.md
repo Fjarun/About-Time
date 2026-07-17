@@ -22,6 +22,8 @@ No Python or code needed.
 
 ## Features
 
+<img src="Assets/Demo.gif" alt="About Time demo — adding, naming and running timers" align="right" width="300">
+
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
 - Run up to **5 simultaneous countdown timers** at once, each independently named and tracked
 - Add timers one at a time via the **Add timer** button; remove any individual slot with its **x** button — no need to manage a fixed set
