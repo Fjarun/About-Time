@@ -8,12 +8,23 @@
 ![Downloads](https://img.shields.io/github/downloads/Fjarun/About-Time/total)
 
 > **This project is in active development.** Features and behaviour may change between releases.
+>
+> MIT licensed — free to use, copy, modify, and redistribute, including commercially, as long as the license text stays attached.
 
 **A free Windows desktop timer that stays on top of everything else.**
 
 About Time keeps your countdowns always visible, no matter what you're working on. Run up to 5 named task timers simultaneously, each with its own label and countdown, and choose from an optional family of notification sounds when each one finishes. Perfect for productivity workflows where you need a floating timer that doesn't disappear behind your browser or IDE.
 
-This project was made to account for a personal need for an always-on-top timer program, and is an ongoing project built in tandem with Claude Code as a practical exercise in working with AI-assisted development tools.
+1. [Why This Exists](#why-this-exists)
+1. [Download](#download)
+1. [Features](#features)
+1. [Tech Stack](#tech-stack)
+
+## Why This Exists
+
+Every always-on-top timer solution I found was either bundled into something heavier than I wanted (a full productivity suite, a Pomodoro app with its own opinionated workflow) or was a single fixed timer with no room for running several named countdowns side by side. I wanted something narrower: a small floating window, several independent timers I could label myself, sane persistence so a timer I'm mid-way through survives a restart, and nothing else competing for attention.
+
+About Time is that — built to fit a personal need first, and shared because a small focused tool that does one thing well tends to be useful to more people than just the one who built it. It's also an ongoing practical exercise in working with Claude Code as an AI-assisted development tool, developed in the open as both a working app and a real example of that workflow.
 
 ## Download
 
