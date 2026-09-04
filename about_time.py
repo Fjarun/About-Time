@@ -4,8 +4,9 @@ import sys
 import re
 import json
 import os
+import base64
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -13,6 +14,7 @@ _wav_lock = threading.Lock()
 
 if sys.platform == "win32":
     from winotify import Notification
+    from winotify import TEMPLATE as _TOAST_TEMPLATE, _run_ps as _toast_run_ps
     from pycaw.pycaw import AudioUtilities
     import winsound, struct, math
 
@@ -138,7 +140,7 @@ _SETTINGS_PATH = _resolve_settings_path()
 _first_boot = not os.path.exists(_SETTINGS_PATH)
 
 def _load_settings():
-    defaults = {"pinned": False, "layout_mode": "stack",
+    defaults = {"pinned": False, "layout_mode": "stack", "muted": False,
                 "window_x": None, "window_y": None, "timers": []}
     try:
         with open(_SETTINGS_PATH) as f:
@@ -210,6 +212,7 @@ def _load_settings():
         return {
             "pinned":        bool(data.get("pinned", defaults["pinned"])),
             "layout_mode":   layout_mode,
+            "muted":         bool(data.get("muted", defaults["muted"])),
             "window_x":      win_x,
             "window_y":      win_y,
             "timers":        timer_data,
@@ -226,6 +229,7 @@ def _save_settings():
             json.dump({
                 "pinned":        topmost_var.get(),
                 "layout_mode":   _layout_mode,
+                "muted":         _muted,
                 "window_x":      root.winfo_x(),
                 "window_y":      root.winfo_y(),
                 "timers":        [{"title": tw.title_entry.get() if tw.title_entry.get() != _TITLE_PLACEHOLDER else "",
@@ -250,30 +254,49 @@ _layout_mode    = _s["layout_mode"]
 _win_x          = _s.get("window_x")
 _win_y          = _s.get("window_y")
 
-# Global mute is a session-local toggle, not a persisted setting — muting IS
-# setting every timer's own sound to off (see toggle_mute below), so there's
-# no separate hidden "muted" state to save; _muted here just tracks whether
-# this toggle's "restore on second click" memory is currently populated.
-_muted = False
-_muted_prior_sounds = {}  # TimerWidget -> its sound_mode at the moment mute was pressed
+# Global mute is a playback gate, not a data mutation — each timer's own
+# sound_mode is left untouched while muted, so there's nothing to stash and
+# restore. _muted itself is persisted (see _save_settings/_load_settings).
+_muted = _s.get("muted", False)
 
 def beep(sound_mode):
-    """Plays the given timer's own chosen sound, unless it has none chosen
-    (sound_mode is None) — which is also what a muted timer looks like."""
-    if not sound_mode:
+    """Plays the given timer's own chosen sound, unless muted globally or it
+    has none chosen (sound_mode is None)."""
+    if _muted or not sound_mode:
         return
     with _wav_lock:
         wav = _WAVS.get(sound_mode)
     threading.Thread(target=_play, args=(wav,), daemon=True).start()
 
 def notify(title, duration):
+    """Shows a Windows toast when a timer finishes.
+
+    The timer title is free-form user text. winotify embeds a toast's msg
+    into a PowerShell double-quoted here-string, which PowerShell expands
+    (e.g. "$(...)" runs as code) before that text ever becomes toast XML —
+    the CDATA wrapper only protects the XML layer, not the PowerShell layer
+    underneath it. So the title's content is never written into the script
+    as literal text at all: it's Base64-encoded here and decoded back to a
+    string by a fixed, title-independent PowerShell expression, with only
+    that resulting variable referenced in the template. Whatever the title
+    contains, it can only ever end up as inert data to PowerShell.
+    """
     if sys.platform != "win32":
         return
     safe_title = str(title)[:50].strip() if title else ""
     msg = f"Your timer '{safe_title}' has finished." if safe_title else f"Your {duration} timer has finished."
+    msg_b64 = base64.b64encode(msg.encode("utf-8")).decode("ascii")
+
     def _send():
-        toast = Notification(app_id="About Time", title="Timer finished", msg=msg)
-        toast.show()
+        toast = Notification(app_id="About Time", title="Timer finished", msg="$Msg")
+        toast.actions = ""
+        toast.audio = '<audio silent="true" />'
+        script = (
+            f'$MsgB64 = "{msg_b64}"\n'
+            "$Msg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($MsgB64))\n"
+            + _TOAST_TEMPLATE.format(**toast.__dict__)
+        )
+        _toast_run_ps(command=script)
     threading.Thread(target=_send, daemon=True).start()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -743,12 +766,8 @@ def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initi
     _pack_timer(tw)
     timers.append((sep, tw))
     if _muted:
-        # a timer opened while globally muted should come up muted too —
-        # remember what it would have started as, same bookkeeping toggle_mute
-        # itself uses, so unmuting later restores it correctly.
-        _muted_prior_sounds[tw] = tw.sound_mode
-        tw.sound_mode = None
-        tw._update_sound_btns()
+        # a timer opened while globally muted should show as muted too —
+        # its own sound_mode is left as-is, only the controls grey out.
         _set_sound_controls_enabled(tw, False)
     _update_add_btn()
     _fit_window_any()
@@ -986,20 +1005,8 @@ def _set_sound_controls_enabled(tw, enabled):
 def toggle_mute():
     global _muted
     _muted = not _muted
-    if _muted:
-        _muted_prior_sounds.clear()
-        for _, tw in timers:
-            _muted_prior_sounds[tw] = tw.sound_mode
-            tw.sound_mode = None
-            tw._update_sound_btns()
-            _set_sound_controls_enabled(tw, False)
-    else:
-        for _, tw in timers:
-            if tw in _muted_prior_sounds:
-                tw.sound_mode = _muted_prior_sounds[tw]
-                tw._update_sound_btns()
-            _set_sound_controls_enabled(tw, True)
-        _muted_prior_sounds.clear()
+    for _, tw in timers:
+        _set_sound_controls_enabled(tw, not _muted)
     _update_mute_btn()
     _save_settings()
     if _mute_tip.winfo_ismapped():
