@@ -131,9 +131,8 @@ _TITLE_TEXT_COLOR = "#ffffff"
 # Fixed per-timer box size — every TimerWidget is forced to this size via
 # pack_propagate(False), regardless of state (idle/running/paused/finished
 # each naturally want different content width). Sized to comfortably fit the
-# countdown at its widest (fmt() has no day unit, so a 30-day duration renders
-# as plain hours, e.g. "720:00:00") and the 3-button paused-state row without
-# crowding.
+# countdown at its widest (the 30-day max duration renders as "30d 0:00:00")
+# and the 3-button paused-state row without crowding.
 TIMER_W = 240
 TIMER_H = 150
 
@@ -379,9 +378,9 @@ def parse_input(text):
 _FLASH_COLORS = [f"#{int(255*(1-i/19)+26*(i/19)):02X}0000" for i in range(20)]
 BTN_W = 72
 
-def _make_tip():
+def _make_tip(parent=None):
     return ctk.CTkLabel(
-        root, text="",
+        parent if parent is not None else root, text="",
         fg_color=("#4a4a4a", "#2a2a2a"),
         corner_radius=4,
         font=ctk.CTkFont(size=16),
@@ -433,12 +432,8 @@ class TimerWidget(ctk.CTkFrame):
             # conventional close-button corner (title bars, browser tabs).
             del_btn.place(relx=1.0, anchor="ne", x=-4, y=4)
 
-            del_tip = ctk.CTkLabel(
-                self, text="Remove this timer",
-                fg_color=("#4a4a4a", "#2a2a2a"),
-                corner_radius=4,
-                font=ctk.CTkFont(size=16),
-            )
+            del_tip = _make_tip(parent=self)
+            del_tip.configure(text="Remove this timer")
             # Tooltip opens toward the box's interior (leftward from the
             # button), mirroring the button's own corner flip.
             del_btn.bind("<Enter>", lambda e: (del_tip.place(relx=1.0, anchor="ne", x=-34, y=7), del_tip.lift()))
