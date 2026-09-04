@@ -48,14 +48,14 @@ No Python or code needed.
 
 - Three notification chimes — short, medium, and long — designed as a matched family with consistent tone and feel
 - Each timer has its own sound picker — pick short, medium, or long, or click the active one again to turn that timer's sound off
-- **Mute** — silences every timer at once, remembering each one's individual sound choice and restoring it when unmuted; per-timer sound pickers are locked while muted
+- **Mute** — silences every timer at once without touching any timer's own sound choice; per-timer sound pickers are locked while muted
 - **Windows Volume Mixer integration** — the speaker icon opens a slider that controls this app's own volume directly in Windows' native per-app mixer (click outside the slider to close it)
 
 ### Persistence
 
 - Window position, timer count, timer names and durations are all remembered between sessions
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
-- Sound choice, notification preference, and always-on-top state are saved per timer automatically
+- Sound choice and notification preference are saved per timer automatically; always-on-top and layout mode are saved globally
 
 ## Tech Stack
 
