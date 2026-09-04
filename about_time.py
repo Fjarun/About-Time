@@ -148,6 +148,12 @@ def _resolve_settings_path():
 _SETTINGS_PATH = _resolve_settings_path()
 _first_boot = not os.path.exists(_SETTINGS_PATH)
 
+def _is_int(value):
+    """isinstance(value, int) that excludes bool — bool is an int subclass
+    in Python, so a JSON `true`/`false` in a numeric settings field would
+    otherwise pass validation and get silently treated as 1/0."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
 def _load_settings():
     defaults = {"pinned": False, "layout_mode": "stack", "muted": False,
                 "window_x": None, "window_y": None, "timers": []}
@@ -172,7 +178,7 @@ def _load_settings():
         titles = raw_titles[:MAX_TIMERS] if isinstance(raw_titles, list) else None
         win_x = data.get("window_x")
         win_y = data.get("window_y")
-        if not isinstance(win_x, int) or not isinstance(win_y, int):
+        if not _is_int(win_x) or not _is_int(win_y):
             win_x = win_y = None
         layout_mode = data.get("layout_mode", defaults["layout_mode"])
         if layout_mode not in ("stack", "row"):
@@ -188,10 +194,10 @@ def _load_settings():
                 if not isinstance(title, str):
                     title = ""
                 dur = t.get("duration", 15 * 60)
-                if not isinstance(dur, int) or not (1 <= dur <= MAX_DURATION_SECONDS):
+                if not _is_int(dur) or not (1 <= dur <= MAX_DURATION_SECONDS):
                     dur = 15 * 60
                 rem = t.get("remaining", dur)
-                if not isinstance(rem, int) or not (0 <= rem <= dur):
+                if not _is_int(rem) or not (0 <= rem <= dur):
                     rem = dur
                 state = t.get("state", "idle")
                 if state not in ("idle", "running", "paused", "finished"):
@@ -702,7 +708,7 @@ ctk.set_appearance_mode("dark")
 root = ctk.CTk()
 root.title("About Time")
 _base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-root.iconbitmap(os.path.join(_base, "assets", "icon.ico"))
+root.iconbitmap(os.path.join(_base, "Assets", "icon.ico"))
 root.resizable(True, True)
 root.minsize(250, 130)
 
@@ -1028,6 +1034,15 @@ _update_pin()
 _update_mute_btn()
 _update_layout_btn()
 
+# Restore window position before loading timers — add_timer() below triggers
+# an incidental _save_settings() per timer, which would otherwise capture
+# the window's default startup position and briefly overwrite the real
+# saved one on disk (self-healing on the next real save, but not free).
+# Loose bounds allow multi-monitor layouts (negative or large x/y).
+if _win_x is not None and _win_y is not None:
+    if -32000 <= _win_x <= 32000 and -32000 <= _win_y <= 32000:
+        root.geometry(f"+{_win_x}+{_win_y}")
+
 if _first_boot:
     add_timer(deletable=False, initial_title="About Time")
 else:
@@ -1062,10 +1077,5 @@ def _on_global_click(event):
 
 root.bind_all("<Button-1>", _on_global_click, add="+")
 root.protocol("WM_DELETE_WINDOW", _on_close)
-
-# Restore window position — loose bounds allow multi-monitor layouts (negative or large x/y)
-if _win_x is not None and _win_y is not None:
-    if -32000 <= _win_x <= 32000 and -32000 <= _win_y <= 32000:
-        root.geometry(f"+{_win_x}+{_win_y}")
 
 root.mainloop()
