@@ -679,7 +679,7 @@ class TimerWidget(ctk.CTkFrame):
         self.countdown_label.pack(padx=8, pady=1)
         _fit_window_any(preserve=True)
         if seconds is None:
-            if self.state == "running":
+            if self.state in ("running", "paused"):
                 self.display_var.set(fmt(self.remaining_seconds))
             elif self.state == "finished":
                 self.display_var.set("Done!")
