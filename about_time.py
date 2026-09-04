@@ -717,7 +717,6 @@ timers_frame.pack(fill="x")
 
 # Each entry is (separator_or_None, TimerWidget)
 timers = []
-_resize_pending = False
 
 def _make_separator():
     """Creates a separator oriented for the current _layout_mode: a horizontal
@@ -748,21 +747,6 @@ def _pack_timer(tw):
         tw.pack(fill="x")
     else:
         tw.pack(side="left")
-
-def _content_heights():
-    """Live window heights that fully show the first n timers, for n=1..len(timers).
-
-    Measured from current required geometry every call — never cached, so the
-    targets stay correct as timer states, edits, and counts change."""
-    root.update_idletasks()
-    full = root.winfo_reqheight()
-    out = [full]
-    acc = 0
-    for _sep, tw in reversed(timers[1:]):
-        acc += tw.winfo_reqheight() + 5  # separator: 1px line + 2px pady each side
-        out.append(full - acc)
-    out.reverse()
-    return out
 
 def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initial_remaining=None,
               initial_state="idle", initial_sound="short", initial_notify=False):
@@ -800,34 +784,25 @@ def remove_timer(tw):
     _save_settings()
 
 def _fit_window(preserve=False, width=None):
-    """Stack-mode sizing: snaps window height to reveal exactly N timers.
+    """Stack-mode sizing: pins the window to its exact required size, the
+    same fixed-size/no-drag-resize behavior as row mode — every timer is
+    always fully shown, no partial-reveal collapse.
 
-    `width` overrides the window's current width instead of preserving it —
-    used only right after switching from row mode, where the leftover width
-    is row mode's wide fixed size and means nothing in a single-column
-    layout. Every other caller leaves this as None and keeps the user's
-    chosen width, same as before."""
-    heights = _content_heights()
-    if not heights:
-        return
-    if preserve and root.winfo_viewable():
-        # keep the user's collapsed view, but re-aligned to a live boundary
-        cur = root.winfo_height()
-        target = min(heights, key=lambda h: abs(h - cur))
-    else:
-        target = heights[-1]
-    # maxsize must track live required height — clamping below it squashes
-    # the bottom timer's buttons and resize can't recover
-    root.minsize(250, heights[0])
-    root.maxsize(9999, heights[-1])
-    w = width if width is not None else root.winfo_width()
-    root.geometry(f"{w}x{target}")
+    `preserve`/`width` are accepted so every existing call site still works
+    unchanged, but neither has anything left to do now that there's a
+    single fixed target instead of a range of collapse points."""
+    root.update_idletasks()
+    w = root.winfo_reqwidth()
+    h = root.winfo_reqheight()
+    root.minsize(w, h)
+    root.maxsize(w, h)
+    root.geometry(f"{w}x{h}")
 
 def _fit_window_row():
     """Row-mode sizing: every box is fixed-size and all timers are always
-    shown (no partial-reveal in this mode), so the window is just locked to
-    exactly fit its natural required size — min and max pinned equal, so
-    there's nothing for the user to drag-resize into."""
+    shown, so the window is just locked to exactly fit its natural required
+    size — min and max pinned equal, so there's nothing for the user to
+    drag-resize into."""
     root.update_idletasks()
     w = root.winfo_reqwidth()
     h = root.winfo_reqheight()
@@ -842,30 +817,6 @@ def _fit_window_any(preserve=False, width=None):
         _fit_window(preserve=preserve, width=width)
     else:
         _fit_window_row()
-
-# ── Height-snap on resize ──────────────────────────────────────────────────────
-def _snap_candidates():
-    return _content_heights()
-
-def _on_resize(event):
-    global _resize_pending
-    if event.widget is not root or _resize_pending or not timers or _layout_mode != "stack":
-        return
-    # measurement deferred to idle time — _content_heights pumps idletasks,
-    # which is unsafe inside an active Configure dispatch
-    _resize_pending = True
-    root.after_idle(_do_snap)
-
-def _do_snap():
-    global _resize_pending
-    _resize_pending = False
-    candidates = _snap_candidates()
-    if not candidates:
-        return
-    current_h = root.winfo_height()
-    target = min(candidates, key=lambda h: abs(h - current_h))
-    if current_h != target:
-        root.geometry(f"{root.winfo_width()}x{target}")
 
 # ── Layout mode toggle (stack ↔ row) ────────────────────────────────────────────
 def _relayout_timers():
@@ -1114,7 +1065,6 @@ def _on_global_click(event):
         w = w.master
     _hide_volume_popup()
 
-root.bind("<Configure>", _on_resize)
 root.bind_all("<Button-1>", _on_global_click, add="+")
 root.protocol("WM_DELETE_WINDOW", _on_close)
 
