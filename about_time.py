@@ -82,15 +82,25 @@ if sys.platform == "win32":
 
     def _get_app_volume():
         session = _find_own_audio_session()
-        if session is None or session.SimpleAudioVolume is None:
+        try:
+            if session is None or session.SimpleAudioVolume is None:
+                return None
+            return session.SimpleAudioVolume.GetMasterVolume()
+        except Exception as e:
+            # e.g. the audio device was unplugged/switched between finding
+            # the session and reading it — same "not available" outcome as
+            # session is None above, just discovered a step later.
+            print(f"[About Time] _get_app_volume failed: {e}", file=sys.stderr)
             return None
-        return session.SimpleAudioVolume.GetMasterVolume()
 
     def _set_app_volume(level):
         session = _find_own_audio_session()
-        if session is None or session.SimpleAudioVolume is None:
-            return
-        session.SimpleAudioVolume.SetMasterVolume(max(0.0, min(1.0, level)), None)
+        try:
+            if session is None or session.SimpleAudioVolume is None:
+                return
+            session.SimpleAudioVolume.SetMasterVolume(max(0.0, min(1.0, level)), None)
+        except Exception as e:
+            print(f"[About Time] _set_app_volume failed: {e}", file=sys.stderr)
 
     def _prime_audio_session():
         """A real (inaudibly quiet) PlaySound call — Windows only creates a
