@@ -5,6 +5,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
 ![Status](https://img.shields.io/badge/status-Active%20Development-orange)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Downloads](https://img.shields.io/github/downloads/Fjarun/About-Time/total)
 
 > **This project is in active development.** Features and behaviour may change between releases.
 
