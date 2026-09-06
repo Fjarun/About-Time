@@ -1,5 +1,9 @@
 # About Time - Always-on-Top Timer App
 
+<p align="center">
+  <img src="Assets/hero_banner.png" alt="About Time — five simultaneous timers in row layout, each independently named, running, or finished">
+</p>
+
 ![Version](https://img.shields.io/badge/version-v0.9.1-blue)
 ![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
@@ -34,22 +38,31 @@ No Python or code needed.
 
 ## Features
 
-<img src="Assets/Demo.gif" alt="About Time demo — adding, naming and running timers" align="right" width="300">
-
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
 - Run up to **5 simultaneous countdown timers** at once, each independently named and tracked
-- Add timers one at a time via the **Add timer** button; remove any individual slot with its **x** button — no need to manage a fixed set
-- Custom time input per timer, up to 30 days: plain numbers assumed as minutes, or suffix with `s`, `m`, `h`, or `d`. Past 24 hours the countdown displays as `Nd H:MM:SS`
+- Custom time input per timer, up to 30 days: plain numbers assumed as minutes, suffix with `s`/`m`/`h`/`d` for a single unit, or mix units in one go — `3h14m`, `1d2h15m`. Past 24 hours the countdown displays as `Nd H:MM:SS`
 - Click the countdown display to edit the time at any point — even mid-run
 - **Windows desktop notifications** — opt-in toast alerts when a timer finishes, toggled per timer, showing that timer's name or duration if untitled
-- **Layout toggle** — switch between a vertical stack and a horizontal row of timers; boxes stay a fixed size in either layout
 
 ### Sounds
+
+<img src="Assets/single_timer_sound_picker.png" alt="A single timer in stack mode with its sound picker active" align="right" width="240">
 
 - Three notification chimes — short, medium, and long — designed as a matched family with consistent tone and feel
 - Each timer has its own sound picker — pick short, medium, or long, or click the active one again to turn that timer's sound off
 - **Mute** — silences every timer at once without touching any timer's own sound choice; per-timer sound pickers are locked while muted
 - **Windows Volume Mixer integration** — the speaker icon opens a slider that controls this app's own volume directly in Windows' native per-app mixer (click outside the slider to close it)
+
+<br clear="right">
+
+### Layouts
+
+<img src="Assets/stack_mode.png" alt="Three timers stacked vertically, each independently named and controlled" align="right" width="240">
+
+- **Layout toggle** — switch between a vertical stack and a horizontal row of timers; boxes stay a fixed size in either layout
+- Add timers one at a time via the **+** tile at the end of the stack/row; remove any individual slot with its **x** button — no need to manage a fixed set
+
+<br clear="right">
 
 ### Persistence
 

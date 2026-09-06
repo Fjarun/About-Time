@@ -102,13 +102,21 @@ if sys.platform == "win32":
         except Exception as e:
             print(f"[About Time] _set_app_volume failed: {e}", file=sys.stderr)
 
-    def _prime_audio_session():
+    def _prime_audio_session(first_boot_volume=None):
         """A real (inaudibly quiet) PlaySound call — Windows only creates a
         per-process audio session once something has actually rendered, so
         without this the volume popup would have nothing to control until
-        the first timer finished."""
+        the first timer finished. Windows gives a brand-new session's volume
+        no history, so it lands at 100% — deafening on a fresh install the
+        moment the first real sound plays. Passing first_boot_volume caps
+        that new session's volume right after priming, before anything
+        audible has a chance to play."""
         silent = _wrap_wav(_apply_reverb(_sine_segment(880, 0.05, 0.05, volume=0.0001)))
-        threading.Thread(target=lambda: winsound.PlaySound(silent, winsound.SND_MEMORY), daemon=True).start()
+        def _run():
+            winsound.PlaySound(silent, winsound.SND_MEMORY)
+            if first_boot_volume is not None:
+                _set_app_volume(first_boot_volume)
+        threading.Thread(target=_run, daemon=True).start()
 else:
     def _build_wavs():
         pass
@@ -118,7 +126,7 @@ else:
         return None
     def _set_app_volume(level):
         pass
-    def _prime_audio_session():
+    def _prime_audio_session(first_boot_volume=None):
         pass
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -363,20 +371,39 @@ def parse_input(text):
         else:
             return None
         return total if 1 <= total <= MAX_DURATION_SECONDS else None
-    match = re.match(r"^(\d+)\s*([a-z]*)$", text.lower())
-    if not match:
-        return None
-    value = int(match.group(1))
-    unit = match.group(2)
-    if not unit or unit.startswith("m"):
-        total = value * 60
-    elif unit.startswith("s"):
-        total = value
-    elif unit.startswith("h"):
-        total = value * 3600
-    elif unit.startswith("d"):
-        total = value * 86400
-    else:
+    bare = re.match(r"^(\d+)$", text)
+    if bare:
+        total = int(bare.group(1)) * 60
+        return total if 1 <= total <= MAX_DURATION_SECONDS else None
+    # Mixed-unit form: one or more "<number><unit>" tokens back to back
+    # (spaces allowed between them), e.g. "3h14m" or "1d 2h 15m". Each unit
+    # may appear at most once — "1h2h" is ambiguous, not a bigger number.
+    # Units are matched against an explicit alias list rather than a bare
+    # startswith check, so garbage like "14mx" (m + trailing "x") is
+    # rejected instead of silently read as minutes.
+    lowered = text.lower().replace(" ", "")
+    seconds_per_unit = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+    unit_aliases = {
+        "d": re.compile(r"d(ays?)?$"),
+        "h": re.compile(r"h(rs?|ours?)?$"),
+        "m": re.compile(r"m(ins?|inutes?)?$"),
+        "s": re.compile(r"s(ecs?|econds?)?$"),
+    }
+    seen_units = set()
+    total = 0
+    pos = 0
+    while pos < len(lowered):
+        token = re.match(r"(\d+)([a-z]+)", lowered[pos:])
+        if not token:
+            return None
+        value, unit = int(token.group(1)), token.group(2)
+        unit_key = next((k for k, pat in unit_aliases.items() if pat.match(unit)), None)
+        if unit_key is None or unit_key in seen_units:
+            return None
+        seen_units.add(unit_key)
+        total += value * seconds_per_unit[unit_key]
+        pos += token.end()
+    if not seen_units:
         return None
     return total if 1 <= total <= MAX_DURATION_SECONDS else None
 
@@ -764,7 +791,7 @@ def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initi
         # a timer opened while globally muted should show as muted too —
         # its own sound_mode is left as-is, only the controls grey out.
         _set_sound_controls_enabled(tw, False)
-    _update_add_btn()
+    _place_add_tile()
     _fit_window_any()
     _save_settings()
 
@@ -780,7 +807,7 @@ def remove_timer(tw):
             tw.destroy()
             timers.pop(i)
             break
-    _update_add_btn()
+    _place_add_tile()
     _fit_window_any()
     _save_settings()
 
@@ -840,6 +867,7 @@ def _toggle_layout_mode():
     global _layout_mode
     _layout_mode = "row" if _layout_mode == "stack" else "stack"
     _relayout_timers()
+    _place_add_tile()
     if _layout_mode == "stack":
         # row mode's leftover width is meaningless in a single-column
         # layout — snap to the new stack's own natural width instead of
@@ -854,27 +882,61 @@ def _toggle_layout_mode():
     if _layout_tip.winfo_ismapped():
         _show_layout_tip()
 
-# ── Add timer button ───────────────────────────────────────────────────────────
-add_btn_frame = ctk.CTkFrame(root, fg_color="transparent")
-add_btn_frame.pack(fill="x", pady=(0, 6))
+# ── Add timer tile ────────────────────────────────────────────────────────────
+# Lives in the same pack flow as the timer boxes (timers_frame), always last,
+# instead of a separate full-width bar below them — so it reads as "the next
+# slot" rather than a floating control that looks fine in stack mode and
+# orphaned in row mode.
+_add_tile_sep = None
+_add_tile = None
 
-add_btn = ctk.CTkButton(
-    add_btn_frame,
-    text="◓ Add timer",
-    width=120,
-    font=ctk.CTkFont(size=16),
-    command=lambda: add_timer(deletable=True),
-)
-add_btn.pack()
-
-_CLOCK_SYMS = {1: "◓", 2: "◑", 3: "◒", 4: "◐"}
-
-def _update_add_btn():
-    if len(timers) >= MAX_TIMERS:
-        add_btn_frame.pack_forget()
+def _make_add_tile():
+    """The whole tile is the click target, not just its '+' label — a 24px
+    button felt like a tiny hitbox floating in an otherwise-empty strip, so
+    the click/hover behavior lives on the tile frame itself instead."""
+    if _layout_mode == "stack":
+        tile = ctk.CTkFrame(timers_frame, fg_color="transparent", corner_radius=8,
+                             width=TIMER_W, height=32, border_width=2,
+                             border_color=("#444444", "#333333"), cursor="hand2")
     else:
-        add_btn.configure(text=f"{_CLOCK_SYMS[len(timers)]} Add timer")
-        add_btn_frame.pack(fill="x", pady=(0, 6))
+        tile = ctk.CTkFrame(timers_frame, fg_color="transparent", corner_radius=8,
+                             width=32, height=TIMER_H, border_width=2,
+                             border_color=("#444444", "#333333"), cursor="hand2")
+    tile.pack_propagate(False)
+    label = ctk.CTkLabel(tile, text="+", font=ctk.CTkFont(size=18, weight="bold"))
+    label.place(relx=0.5, rely=0.5, anchor="center")
+
+    def _on_click(event=None):
+        add_timer(deletable=True)
+    def _on_enter(event=None):
+        tile.configure(fg_color=("#3a3a4a", "#3a3a4a"))
+    def _on_leave(event=None):
+        tile.configure(fg_color="transparent")
+
+    for widget in (tile, label):
+        widget.bind("<Button-1>", _on_click)
+        widget.bind("<Enter>", _on_enter)
+        widget.bind("<Leave>", _on_leave)
+    return tile
+
+def _place_add_tile():
+    """Rebuilds and re-appends the add tile so it's always last in
+    timers_frame's pack order, sized/oriented for the current _layout_mode.
+    Hidden entirely once MAX_TIMERS is reached — there's no next slot."""
+    global _add_tile_sep, _add_tile
+    if _add_tile_sep:
+        _add_tile_sep.pack_forget()
+        _add_tile_sep.destroy()
+        _add_tile_sep = None
+    if _add_tile:
+        _add_tile.pack_forget()
+        _add_tile.destroy()
+        _add_tile = None
+    if len(timers) >= MAX_TIMERS:
+        return
+    _add_tile_sep = _make_separator() if timers else None
+    _add_tile = _make_add_tile()
+    _pack_timer(_add_tile)
 
 # ── Pin / Always on top ────────────────────────────────────────────────────────
 topmost_var = ctk.BooleanVar(value=_pinned)
@@ -894,7 +956,7 @@ _tip = _make_tip()
 
 def _show_tip(event=None):
     _tip.configure(text="Always on top: On" if topmost_var.get() else "Always on top: Off")
-    _tip.place(x=34, y=7)
+    _tip.place(x=pin_btn.winfo_x() + pin_btn.winfo_width() + 4, y=pin_btn.winfo_y() + 3)
 
 def _hide_tip(event=None):
     _tip.place_forget()
@@ -981,7 +1043,7 @@ _mute_tip = _make_tip()
 
 def _show_mute_tip(event=None):
     _mute_tip.configure(text="Muted: On" if _muted else "Muted: Off")
-    _mute_tip.place(x=34, y=117)
+    _mute_tip.place(x=mute_btn.winfo_x() + mute_btn.winfo_width() + 4, y=mute_btn.winfo_y() + 3)
 
 def _hide_mute_tip(event=None):
     _mute_tip.place_forget()
@@ -1002,7 +1064,7 @@ _layout_tip = _make_tip()
 
 def _show_layout_tip(event=None):
     _layout_tip.configure(text="Switch to stack layout" if _layout_mode == "row" else "Switch to row layout")
-    _layout_tip.place(x=34, y=35)
+    _layout_tip.place(x=layout_btn.winfo_x() + layout_btn.winfo_width() + 4, y=layout_btn.winfo_y() + 3)
 
 def _hide_layout_tip(event=None):
     _layout_tip.place_forget()
@@ -1028,7 +1090,7 @@ layout_btn.bind("<Leave>", _hide_layout_tip)
 
 # ── Init — apply persisted settings ───────────────────────────────────────────
 _build_wavs()
-_prime_audio_session()
+_prime_audio_session(0.5 if _first_boot else None)
 root.wm_attributes("-topmost", topmost_var.get())
 _update_pin()
 _update_mute_btn()
