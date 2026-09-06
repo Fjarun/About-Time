@@ -41,7 +41,7 @@ No Python or code needed.
 
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
 - Run up to **5 simultaneous countdown timers** at once, each independently named and tracked
-- Custom time input per timer, up to 30 days: plain numbers assumed as minutes, suffix with `s`/`m`/`h`/`d` for a single unit, or mix units in one go — `3h14m`, `1d2h15m`. Past 24 hours the countdown displays as `Nd H:MM:SS`
+- Custom time input per timer, up to 30 days: plain numbers assumed as minutes, suffix with `s`/`m`/`h`/`d` for a single unit, mix units in one go — `3h14m`, `1d2h15m` — or type a clock format directly (`90:00`, `1:30:00`, `2d 3:45:12`). Past 24 hours the countdown displays as `Nd H:MM:SS`
 - Click the countdown display to edit the time at any point — even mid-run
 - **Windows desktop notifications** — opt-in toast alerts when a timer finishes, toggled per timer, showing that timer's name or duration if untitled
 
@@ -62,6 +62,8 @@ No Python or code needed.
 
 - **Layout toggle** — switch between a vertical stack and a horizontal row of timers; boxes stay a fixed size in either layout
 - Add timers one at a time via the **+** tile at the end of the stack/row; remove any individual slot with its **x** button — no need to manage a fixed set
+- The window isn't manually resizable by design — it automatically sizes itself to exactly fit however many timers you currently have, in whichever layout you're in, so there's never dead space or a cropped timer to fight with
+- Every timer box holds its size regardless of state — idle, running, paused, or just finished — so the window never jumps around as a countdown changes
 
 <br clear="right">
 
