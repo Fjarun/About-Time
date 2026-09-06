@@ -4,8 +4,9 @@ import sys
 import re
 import json
 import os
+import base64
 
-__version__ = "0.9.0"
+__version__ = "0.10.0"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -13,6 +14,7 @@ _wav_lock = threading.Lock()
 
 if sys.platform == "win32":
     from winotify import Notification
+    from winotify import TEMPLATE as _TOAST_TEMPLATE, _run_ps as _toast_run_ps
     from pycaw.pycaw import AudioUtilities
     import winsound, struct, math
 
@@ -80,23 +82,41 @@ if sys.platform == "win32":
 
     def _get_app_volume():
         session = _find_own_audio_session()
-        if session is None or session.SimpleAudioVolume is None:
+        try:
+            if session is None or session.SimpleAudioVolume is None:
+                return None
+            return session.SimpleAudioVolume.GetMasterVolume()
+        except Exception as e:
+            # e.g. the audio device was unplugged/switched between finding
+            # the session and reading it — same "not available" outcome as
+            # session is None above, just discovered a step later.
+            print(f"[About Time] _get_app_volume failed: {e}", file=sys.stderr)
             return None
-        return session.SimpleAudioVolume.GetMasterVolume()
 
     def _set_app_volume(level):
         session = _find_own_audio_session()
-        if session is None or session.SimpleAudioVolume is None:
-            return
-        session.SimpleAudioVolume.SetMasterVolume(max(0.0, min(1.0, level)), None)
+        try:
+            if session is None or session.SimpleAudioVolume is None:
+                return
+            session.SimpleAudioVolume.SetMasterVolume(max(0.0, min(1.0, level)), None)
+        except Exception as e:
+            print(f"[About Time] _set_app_volume failed: {e}", file=sys.stderr)
 
-    def _prime_audio_session():
+    def _prime_audio_session(first_boot_volume=None):
         """A real (inaudibly quiet) PlaySound call — Windows only creates a
         per-process audio session once something has actually rendered, so
         without this the volume popup would have nothing to control until
-        the first timer finished."""
+        the first timer finished. Windows gives a brand-new session's volume
+        no history, so it lands at 100% — deafening on a fresh install the
+        moment the first real sound plays. Passing first_boot_volume caps
+        that new session's volume right after priming, before anything
+        audible has a chance to play."""
         silent = _wrap_wav(_apply_reverb(_sine_segment(880, 0.05, 0.05, volume=0.0001)))
-        threading.Thread(target=lambda: winsound.PlaySound(silent, winsound.SND_MEMORY), daemon=True).start()
+        def _run():
+            winsound.PlaySound(silent, winsound.SND_MEMORY)
+            if first_boot_volume is not None:
+                _set_app_volume(first_boot_volume)
+        threading.Thread(target=_run, daemon=True).start()
 else:
     def _build_wavs():
         pass
@@ -106,7 +126,7 @@ else:
         return None
     def _set_app_volume(level):
         pass
-    def _prime_audio_session():
+    def _prime_audio_session(first_boot_volume=None):
         pass
 
 # ── Constants ──────────────────────────────────────────────────────────────────
@@ -119,9 +139,8 @@ _TITLE_TEXT_COLOR = "#ffffff"
 # Fixed per-timer box size — every TimerWidget is forced to this size via
 # pack_propagate(False), regardless of state (idle/running/paused/finished
 # each naturally want different content width). Sized to comfortably fit the
-# countdown at its widest (fmt() has no day unit, so a 30-day duration renders
-# as plain hours, e.g. "720:00:00") and the 3-button paused-state row without
-# crowding.
+# countdown at its widest (the 30-day max duration renders as "30d 0:00:00")
+# and the 3-button paused-state row without crowding.
 TIMER_W = 240
 TIMER_H = 150
 
@@ -137,8 +156,14 @@ def _resolve_settings_path():
 _SETTINGS_PATH = _resolve_settings_path()
 _first_boot = not os.path.exists(_SETTINGS_PATH)
 
+def _is_int(value):
+    """isinstance(value, int) that excludes bool — bool is an int subclass
+    in Python, so a JSON `true`/`false` in a numeric settings field would
+    otherwise pass validation and get silently treated as 1/0."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
 def _load_settings():
-    defaults = {"pinned": False, "layout_mode": "stack",
+    defaults = {"pinned": False, "layout_mode": "stack", "muted": False,
                 "window_x": None, "window_y": None, "timers": []}
     try:
         with open(_SETTINGS_PATH) as f:
@@ -161,7 +186,7 @@ def _load_settings():
         titles = raw_titles[:MAX_TIMERS] if isinstance(raw_titles, list) else None
         win_x = data.get("window_x")
         win_y = data.get("window_y")
-        if not isinstance(win_x, int) or not isinstance(win_y, int):
+        if not _is_int(win_x) or not _is_int(win_y):
             win_x = win_y = None
         layout_mode = data.get("layout_mode", defaults["layout_mode"])
         if layout_mode not in ("stack", "row"):
@@ -177,10 +202,10 @@ def _load_settings():
                 if not isinstance(title, str):
                     title = ""
                 dur = t.get("duration", 15 * 60)
-                if not isinstance(dur, int) or not (1 <= dur <= MAX_DURATION_SECONDS):
+                if not _is_int(dur) or not (1 <= dur <= MAX_DURATION_SECONDS):
                     dur = 15 * 60
                 rem = t.get("remaining", dur)
-                if not isinstance(rem, int) or not (0 <= rem <= dur):
+                if not _is_int(rem) or not (0 <= rem <= dur):
                     rem = dur
                 state = t.get("state", "idle")
                 if state not in ("idle", "running", "paused", "finished"):
@@ -210,6 +235,7 @@ def _load_settings():
         return {
             "pinned":        bool(data.get("pinned", defaults["pinned"])),
             "layout_mode":   layout_mode,
+            "muted":         bool(data.get("muted", defaults["muted"])),
             "window_x":      win_x,
             "window_y":      win_y,
             "timers":        timer_data,
@@ -226,6 +252,7 @@ def _save_settings():
             json.dump({
                 "pinned":        topmost_var.get(),
                 "layout_mode":   _layout_mode,
+                "muted":         _muted,
                 "window_x":      root.winfo_x(),
                 "window_y":      root.winfo_y(),
                 "timers":        [{"title": tw.title_entry.get() if tw.title_entry.get() != _TITLE_PLACEHOLDER else "",
@@ -250,30 +277,49 @@ _layout_mode    = _s["layout_mode"]
 _win_x          = _s.get("window_x")
 _win_y          = _s.get("window_y")
 
-# Global mute is a session-local toggle, not a persisted setting — muting IS
-# setting every timer's own sound to off (see toggle_mute below), so there's
-# no separate hidden "muted" state to save; _muted here just tracks whether
-# this toggle's "restore on second click" memory is currently populated.
-_muted = False
-_muted_prior_sounds = {}  # TimerWidget -> its sound_mode at the moment mute was pressed
+# Global mute is a playback gate, not a data mutation — each timer's own
+# sound_mode is left untouched while muted, so there's nothing to stash and
+# restore. _muted itself is persisted (see _save_settings/_load_settings).
+_muted = _s.get("muted", False)
 
 def beep(sound_mode):
-    """Plays the given timer's own chosen sound, unless it has none chosen
-    (sound_mode is None) — which is also what a muted timer looks like."""
-    if not sound_mode:
+    """Plays the given timer's own chosen sound, unless muted globally or it
+    has none chosen (sound_mode is None)."""
+    if _muted or not sound_mode:
         return
     with _wav_lock:
         wav = _WAVS.get(sound_mode)
     threading.Thread(target=_play, args=(wav,), daemon=True).start()
 
 def notify(title, duration):
+    """Shows a Windows toast when a timer finishes.
+
+    The timer title is free-form user text. winotify embeds a toast's msg
+    into a PowerShell double-quoted here-string, which PowerShell expands
+    (e.g. "$(...)" runs as code) before that text ever becomes toast XML —
+    the CDATA wrapper only protects the XML layer, not the PowerShell layer
+    underneath it. So the title's content is never written into the script
+    as literal text at all: it's Base64-encoded here and decoded back to a
+    string by a fixed, title-independent PowerShell expression, with only
+    that resulting variable referenced in the template. Whatever the title
+    contains, it can only ever end up as inert data to PowerShell.
+    """
     if sys.platform != "win32":
         return
     safe_title = str(title)[:50].strip() if title else ""
     msg = f"Your timer '{safe_title}' has finished." if safe_title else f"Your {duration} timer has finished."
+    msg_b64 = base64.b64encode(msg.encode("utf-8")).decode("ascii")
+
     def _send():
-        toast = Notification(app_id="About Time", title="Timer finished", msg=msg)
-        toast.show()
+        toast = Notification(app_id="About Time", title="Timer finished", msg="$Msg")
+        toast.actions = ""
+        toast.audio = '<audio silent="true" />'
+        script = (
+            f'$MsgB64 = "{msg_b64}"\n'
+            "$Msg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($MsgB64))\n"
+            + _TOAST_TEMPLATE.format(**toast.__dict__)
+        )
+        _toast_run_ps(command=script)
     threading.Thread(target=_send, daemon=True).start()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -325,20 +371,39 @@ def parse_input(text):
         else:
             return None
         return total if 1 <= total <= MAX_DURATION_SECONDS else None
-    match = re.match(r"^(\d+)\s*([a-z]*)$", text.lower())
-    if not match:
-        return None
-    value = int(match.group(1))
-    unit = match.group(2)
-    if not unit or unit.startswith("m"):
-        total = value * 60
-    elif unit.startswith("s"):
-        total = value
-    elif unit.startswith("h"):
-        total = value * 3600
-    elif unit.startswith("d"):
-        total = value * 86400
-    else:
+    bare = re.match(r"^(\d+)$", text)
+    if bare:
+        total = int(bare.group(1)) * 60
+        return total if 1 <= total <= MAX_DURATION_SECONDS else None
+    # Mixed-unit form: one or more "<number><unit>" tokens back to back
+    # (spaces allowed between them), e.g. "3h14m" or "1d 2h 15m". Each unit
+    # may appear at most once — "1h2h" is ambiguous, not a bigger number.
+    # Units are matched against an explicit alias list rather than a bare
+    # startswith check, so garbage like "14mx" (m + trailing "x") is
+    # rejected instead of silently read as minutes.
+    lowered = text.lower().replace(" ", "")
+    seconds_per_unit = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+    unit_aliases = {
+        "d": re.compile(r"d(ays?)?$"),
+        "h": re.compile(r"h(rs?|ours?)?$"),
+        "m": re.compile(r"m(ins?|inutes?)?$"),
+        "s": re.compile(r"s(ecs?|econds?)?$"),
+    }
+    seen_units = set()
+    total = 0
+    pos = 0
+    while pos < len(lowered):
+        token = re.match(r"(\d+)([a-z]+)", lowered[pos:])
+        if not token:
+            return None
+        value, unit = int(token.group(1)), token.group(2)
+        unit_key = next((k for k, pat in unit_aliases.items() if pat.match(unit)), None)
+        if unit_key is None or unit_key in seen_units:
+            return None
+        seen_units.add(unit_key)
+        total += value * seconds_per_unit[unit_key]
+        pos += token.end()
+    if not seen_units:
         return None
     return total if 1 <= total <= MAX_DURATION_SECONDS else None
 
@@ -346,9 +411,9 @@ def parse_input(text):
 _FLASH_COLORS = [f"#{int(255*(1-i/19)+26*(i/19)):02X}0000" for i in range(20)]
 BTN_W = 72
 
-def _make_tip():
+def _make_tip(parent=None):
     return ctk.CTkLabel(
-        root, text="",
+        parent if parent is not None else root, text="",
         fg_color=("#4a4a4a", "#2a2a2a"),
         corner_radius=4,
         font=ctk.CTkFont(size=16),
@@ -400,12 +465,8 @@ class TimerWidget(ctk.CTkFrame):
             # conventional close-button corner (title bars, browser tabs).
             del_btn.place(relx=1.0, anchor="ne", x=-4, y=4)
 
-            del_tip = ctk.CTkLabel(
-                self, text="Remove this timer",
-                fg_color=("#4a4a4a", "#2a2a2a"),
-                corner_radius=4,
-                font=ctk.CTkFont(size=16),
-            )
+            del_tip = _make_tip(parent=self)
+            del_tip.configure(text="Remove this timer")
             # Tooltip opens toward the box's interior (leftward from the
             # button), mirroring the button's own corner flip.
             del_btn.bind("<Enter>", lambda e: (del_tip.place(relx=1.0, anchor="ne", x=-34, y=7), del_tip.lift()))
@@ -646,7 +707,7 @@ class TimerWidget(ctk.CTkFrame):
         self.countdown_label.pack(padx=8, pady=1)
         _fit_window_any(preserve=True)
         if seconds is None:
-            if self.state == "running":
+            if self.state in ("running", "paused"):
                 self.display_var.set(fmt(self.remaining_seconds))
             elif self.state == "finished":
                 self.display_var.set("Done!")
@@ -674,7 +735,7 @@ ctk.set_appearance_mode("dark")
 root = ctk.CTk()
 root.title("About Time")
 _base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
-root.iconbitmap(os.path.join(_base, "assets", "icon.ico"))
+root.iconbitmap(os.path.join(_base, "Assets", "icon.ico"))
 root.resizable(True, True)
 root.minsize(250, 130)
 
@@ -684,7 +745,6 @@ timers_frame.pack(fill="x")
 
 # Each entry is (separator_or_None, TimerWidget)
 timers = []
-_resize_pending = False
 
 def _make_separator():
     """Creates a separator oriented for the current _layout_mode: a horizontal
@@ -716,21 +776,6 @@ def _pack_timer(tw):
     else:
         tw.pack(side="left")
 
-def _content_heights():
-    """Live window heights that fully show the first n timers, for n=1..len(timers).
-
-    Measured from current required geometry every call — never cached, so the
-    targets stay correct as timer states, edits, and counts change."""
-    root.update_idletasks()
-    full = root.winfo_reqheight()
-    out = [full]
-    acc = 0
-    for _sep, tw in reversed(timers[1:]):
-        acc += tw.winfo_reqheight() + 5  # separator: 1px line + 2px pady each side
-        out.append(full - acc)
-    out.reverse()
-    return out
-
 def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initial_remaining=None,
               initial_state="idle", initial_sound="short", initial_notify=False):
     if len(timers) >= MAX_TIMERS:
@@ -743,14 +788,10 @@ def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initi
     _pack_timer(tw)
     timers.append((sep, tw))
     if _muted:
-        # a timer opened while globally muted should come up muted too —
-        # remember what it would have started as, same bookkeeping toggle_mute
-        # itself uses, so unmuting later restores it correctly.
-        _muted_prior_sounds[tw] = tw.sound_mode
-        tw.sound_mode = None
-        tw._update_sound_btns()
+        # a timer opened while globally muted should show as muted too —
+        # its own sound_mode is left as-is, only the controls grey out.
         _set_sound_controls_enabled(tw, False)
-    _update_add_btn()
+    _place_add_tile()
     _fit_window_any()
     _save_settings()
 
@@ -766,39 +807,30 @@ def remove_timer(tw):
             tw.destroy()
             timers.pop(i)
             break
-    _update_add_btn()
+    _place_add_tile()
     _fit_window_any()
     _save_settings()
 
 def _fit_window(preserve=False, width=None):
-    """Stack-mode sizing: snaps window height to reveal exactly N timers.
+    """Stack-mode sizing: pins the window to its exact required size, the
+    same fixed-size/no-drag-resize behavior as row mode — every timer is
+    always fully shown, no partial-reveal collapse.
 
-    `width` overrides the window's current width instead of preserving it —
-    used only right after switching from row mode, where the leftover width
-    is row mode's wide fixed size and means nothing in a single-column
-    layout. Every other caller leaves this as None and keeps the user's
-    chosen width, same as before."""
-    heights = _content_heights()
-    if not heights:
-        return
-    if preserve and root.winfo_viewable():
-        # keep the user's collapsed view, but re-aligned to a live boundary
-        cur = root.winfo_height()
-        target = min(heights, key=lambda h: abs(h - cur))
-    else:
-        target = heights[-1]
-    # maxsize must track live required height — clamping below it squashes
-    # the bottom timer's buttons and resize can't recover
-    root.minsize(250, heights[0])
-    root.maxsize(9999, heights[-1])
-    w = width if width is not None else root.winfo_width()
-    root.geometry(f"{w}x{target}")
+    `preserve`/`width` are accepted so every existing call site still works
+    unchanged, but neither has anything left to do now that there's a
+    single fixed target instead of a range of collapse points."""
+    root.update_idletasks()
+    w = root.winfo_reqwidth()
+    h = root.winfo_reqheight()
+    root.minsize(w, h)
+    root.maxsize(w, h)
+    root.geometry(f"{w}x{h}")
 
 def _fit_window_row():
     """Row-mode sizing: every box is fixed-size and all timers are always
-    shown (no partial-reveal in this mode), so the window is just locked to
-    exactly fit its natural required size — min and max pinned equal, so
-    there's nothing for the user to drag-resize into."""
+    shown, so the window is just locked to exactly fit its natural required
+    size — min and max pinned equal, so there's nothing for the user to
+    drag-resize into."""
     root.update_idletasks()
     w = root.winfo_reqwidth()
     h = root.winfo_reqheight()
@@ -813,30 +845,6 @@ def _fit_window_any(preserve=False, width=None):
         _fit_window(preserve=preserve, width=width)
     else:
         _fit_window_row()
-
-# ── Height-snap on resize ──────────────────────────────────────────────────────
-def _snap_candidates():
-    return _content_heights()
-
-def _on_resize(event):
-    global _resize_pending
-    if event.widget is not root or _resize_pending or not timers or _layout_mode != "stack":
-        return
-    # measurement deferred to idle time — _content_heights pumps idletasks,
-    # which is unsafe inside an active Configure dispatch
-    _resize_pending = True
-    root.after_idle(_do_snap)
-
-def _do_snap():
-    global _resize_pending
-    _resize_pending = False
-    candidates = _snap_candidates()
-    if not candidates:
-        return
-    current_h = root.winfo_height()
-    target = min(candidates, key=lambda h: abs(h - current_h))
-    if current_h != target:
-        root.geometry(f"{root.winfo_width()}x{target}")
 
 # ── Layout mode toggle (stack ↔ row) ────────────────────────────────────────────
 def _relayout_timers():
@@ -859,6 +867,7 @@ def _toggle_layout_mode():
     global _layout_mode
     _layout_mode = "row" if _layout_mode == "stack" else "stack"
     _relayout_timers()
+    _place_add_tile()
     if _layout_mode == "stack":
         # row mode's leftover width is meaningless in a single-column
         # layout — snap to the new stack's own natural width instead of
@@ -873,27 +882,61 @@ def _toggle_layout_mode():
     if _layout_tip.winfo_ismapped():
         _show_layout_tip()
 
-# ── Add timer button ───────────────────────────────────────────────────────────
-add_btn_frame = ctk.CTkFrame(root, fg_color="transparent")
-add_btn_frame.pack(fill="x", pady=(0, 6))
+# ── Add timer tile ────────────────────────────────────────────────────────────
+# Lives in the same pack flow as the timer boxes (timers_frame), always last,
+# instead of a separate full-width bar below them — so it reads as "the next
+# slot" rather than a floating control that looks fine in stack mode and
+# orphaned in row mode.
+_add_tile_sep = None
+_add_tile = None
 
-add_btn = ctk.CTkButton(
-    add_btn_frame,
-    text="◓ Add timer",
-    width=120,
-    font=ctk.CTkFont(size=16),
-    command=lambda: add_timer(deletable=True),
-)
-add_btn.pack()
-
-_CLOCK_SYMS = {1: "◓", 2: "◑", 3: "◒", 4: "◐"}
-
-def _update_add_btn():
-    if len(timers) >= MAX_TIMERS:
-        add_btn_frame.pack_forget()
+def _make_add_tile():
+    """The whole tile is the click target, not just its '+' label — a 24px
+    button felt like a tiny hitbox floating in an otherwise-empty strip, so
+    the click/hover behavior lives on the tile frame itself instead."""
+    if _layout_mode == "stack":
+        tile = ctk.CTkFrame(timers_frame, fg_color="transparent", corner_radius=8,
+                             width=TIMER_W, height=32, border_width=2,
+                             border_color=("#444444", "#333333"), cursor="hand2")
     else:
-        add_btn.configure(text=f"{_CLOCK_SYMS[len(timers)]} Add timer")
-        add_btn_frame.pack(fill="x", pady=(0, 6))
+        tile = ctk.CTkFrame(timers_frame, fg_color="transparent", corner_radius=8,
+                             width=32, height=TIMER_H, border_width=2,
+                             border_color=("#444444", "#333333"), cursor="hand2")
+    tile.pack_propagate(False)
+    label = ctk.CTkLabel(tile, text="+", font=ctk.CTkFont(size=18, weight="bold"))
+    label.place(relx=0.5, rely=0.5, anchor="center")
+
+    def _on_click(event=None):
+        add_timer(deletable=True)
+    def _on_enter(event=None):
+        tile.configure(fg_color=("#3a3a4a", "#3a3a4a"))
+    def _on_leave(event=None):
+        tile.configure(fg_color="transparent")
+
+    for widget in (tile, label):
+        widget.bind("<Button-1>", _on_click)
+        widget.bind("<Enter>", _on_enter)
+        widget.bind("<Leave>", _on_leave)
+    return tile
+
+def _place_add_tile():
+    """Rebuilds and re-appends the add tile so it's always last in
+    timers_frame's pack order, sized/oriented for the current _layout_mode.
+    Hidden entirely once MAX_TIMERS is reached — there's no next slot."""
+    global _add_tile_sep, _add_tile
+    if _add_tile_sep:
+        _add_tile_sep.pack_forget()
+        _add_tile_sep.destroy()
+        _add_tile_sep = None
+    if _add_tile:
+        _add_tile.pack_forget()
+        _add_tile.destroy()
+        _add_tile = None
+    if len(timers) >= MAX_TIMERS:
+        return
+    _add_tile_sep = _make_separator() if timers else None
+    _add_tile = _make_add_tile()
+    _pack_timer(_add_tile)
 
 # ── Pin / Always on top ────────────────────────────────────────────────────────
 topmost_var = ctk.BooleanVar(value=_pinned)
@@ -913,7 +956,7 @@ _tip = _make_tip()
 
 def _show_tip(event=None):
     _tip.configure(text="Always on top: On" if topmost_var.get() else "Always on top: Off")
-    _tip.place(x=34, y=7)
+    _tip.place(x=pin_btn.winfo_x() + pin_btn.winfo_width() + 4, y=pin_btn.winfo_y() + 3)
 
 def _hide_tip(event=None):
     _tip.place_forget()
@@ -986,20 +1029,8 @@ def _set_sound_controls_enabled(tw, enabled):
 def toggle_mute():
     global _muted
     _muted = not _muted
-    if _muted:
-        _muted_prior_sounds.clear()
-        for _, tw in timers:
-            _muted_prior_sounds[tw] = tw.sound_mode
-            tw.sound_mode = None
-            tw._update_sound_btns()
-            _set_sound_controls_enabled(tw, False)
-    else:
-        for _, tw in timers:
-            if tw in _muted_prior_sounds:
-                tw.sound_mode = _muted_prior_sounds[tw]
-                tw._update_sound_btns()
-            _set_sound_controls_enabled(tw, True)
-        _muted_prior_sounds.clear()
+    for _, tw in timers:
+        _set_sound_controls_enabled(tw, not _muted)
     _update_mute_btn()
     _save_settings()
     if _mute_tip.winfo_ismapped():
@@ -1012,7 +1043,7 @@ _mute_tip = _make_tip()
 
 def _show_mute_tip(event=None):
     _mute_tip.configure(text="Muted: On" if _muted else "Muted: Off")
-    _mute_tip.place(x=34, y=117)
+    _mute_tip.place(x=mute_btn.winfo_x() + mute_btn.winfo_width() + 4, y=mute_btn.winfo_y() + 3)
 
 def _hide_mute_tip(event=None):
     _mute_tip.place_forget()
@@ -1033,7 +1064,7 @@ _layout_tip = _make_tip()
 
 def _show_layout_tip(event=None):
     _layout_tip.configure(text="Switch to stack layout" if _layout_mode == "row" else "Switch to row layout")
-    _layout_tip.place(x=34, y=35)
+    _layout_tip.place(x=layout_btn.winfo_x() + layout_btn.winfo_width() + 4, y=layout_btn.winfo_y() + 3)
 
 def _hide_layout_tip(event=None):
     _layout_tip.place_forget()
@@ -1059,11 +1090,20 @@ layout_btn.bind("<Leave>", _hide_layout_tip)
 
 # ── Init — apply persisted settings ───────────────────────────────────────────
 _build_wavs()
-_prime_audio_session()
+_prime_audio_session(0.5 if _first_boot else None)
 root.wm_attributes("-topmost", topmost_var.get())
 _update_pin()
 _update_mute_btn()
 _update_layout_btn()
+
+# Restore window position before loading timers — add_timer() below triggers
+# an incidental _save_settings() per timer, which would otherwise capture
+# the window's default startup position and briefly overwrite the real
+# saved one on disk (self-healing on the next real save, but not free).
+# Loose bounds allow multi-monitor layouts (negative or large x/y).
+if _win_x is not None and _win_y is not None:
+    if -32000 <= _win_x <= 32000 and -32000 <= _win_y <= 32000:
+        root.geometry(f"+{_win_x}+{_win_y}")
 
 if _first_boot:
     add_timer(deletable=False, initial_title="About Time")
@@ -1097,13 +1137,7 @@ def _on_global_click(event):
         w = w.master
     _hide_volume_popup()
 
-root.bind("<Configure>", _on_resize)
 root.bind_all("<Button-1>", _on_global_click, add="+")
 root.protocol("WM_DELETE_WINDOW", _on_close)
-
-# Restore window position — loose bounds allow multi-monitor layouts (negative or large x/y)
-if _win_x is not None and _win_y is not None:
-    if -32000 <= _win_x <= 32000 and -32000 <= _win_y <= 32000:
-        root.geometry(f"+{_win_x}+{_win_y}")
 
 root.mainloop()
