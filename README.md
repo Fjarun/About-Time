@@ -22,6 +22,7 @@ About Time keeps your countdowns always visible, no matter what you're working o
 1. [Why This Exists](#why-this-exists)
 1. [Download](#download)
 1. [Features](#features)
+1. [Known Issues / Notes](#known-issues--notes)
 1. [Tech Stack](#tech-stack)
 
 ## Why This Exists
@@ -69,6 +70,10 @@ No Python or code needed.
 - Window position, timer count, timer names and durations are all remembered between sessions
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
 - Sound choice and notification preference are saved per timer automatically; always-on-top and layout mode are saved globally
+
+## Known Issues / Notes
+
+- **First launch starts at 50% volume, not your system default.** This is intentional, not a bug: a brand-new Windows audio session for an app defaults to 100%, and About Time's own volume lives entirely in Windows' per-app Volume Mixer (see Sounds above). Rather than risk a first-ever countdown finishing at full blast on whatever your system volume happens to be, first launch caps that fresh session to 50% — adjust it anytime with the speaker icon, it's a one-time starting point, not a ceiling.
 
 ## Tech Stack
 
