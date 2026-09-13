@@ -1,0 +1,27 @@
+# Allowlist — everything ignored by default, explicit un-ignores below
+/*
+
+# Public root files
+!/README.md
+!/.version
+!/LICENSE
+!/SECURITY.md
+!/.gitignore
+
+# Public folders (directory AND contents both need un-ignoring)
+!/Assets/
+!/Assets/**
+!/tests/
+!/tests/**
+
+# Re-ignore build noise inside an otherwise-public folder
+tests/__pycache__/
+
+# Source file patterns
+!*.py
+
+# Root exceptions: CLAUDE.md/.claude confirmed NOT discovered when nested
+# inside Internal/ (tested 2026-09-12, Project Scapegoat) — must stay at
+# project root, individually ignored here rather than folded into Internal/.
+CLAUDE.md
+.claude/
