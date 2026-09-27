@@ -43,7 +43,7 @@ def _make_namespace(settings_path: str) -> dict:
         "struct": struct,
         "_SETTINGS_PATH": settings_path,
         "MAX_TIMERS": 5,
-        "MAX_DURATION_SECONDS": 30 * 24 * 3600,
+        "MAX_DURATION_SECONDS": 32 * 24 * 3600,
     }
 
     src_path = Path(__file__).parent.parent / "about_time.py"
@@ -329,18 +329,18 @@ class TestLoadSettingsInvalidFieldValues:
 
     def test_timer_duration_max_boundary_ok(self, load):
         fn, path = load
-        self._write(path, {"timers": [{"duration": 30 * 24 * 3600}]})
+        self._write(path, {"timers": [{"duration": 32 * 24 * 3600}]})
         r = fn()
-        assert r["timers"][0]["duration"] == 30 * 24 * 3600
+        assert r["timers"][0]["duration"] == 32 * 24 * 3600
 
     def test_timer_duration_over_max_gets_default(self, load):
         fn, path = load
-        self._write(path, {"timers": [{"duration": 30 * 24 * 3600 + 1}]})
+        self._write(path, {"timers": [{"duration": 32 * 24 * 3600 + 1}]})
         r = fn()
         assert r["timers"][0]["duration"] == 15 * 60
 
     def test_timer_duration_old_cap_no_longer_a_limit(self, load):
-        # 359999 (the old 99:59:59 cap) is well within the new 30-day cap
+        # 359999 (the old 99:59:59 cap) is well within the new 32-day cap
         fn, path = load
         self._write(path, {"timers": [{"duration": 359999}]})
         r = fn()
@@ -625,10 +625,10 @@ class TestParseInputSeconds:
         assert parse("359999s") == 359999
 
     def test_seconds_max_boundary(self, parse):
-        assert parse(f"{30 * 24 * 3600}s") == 30 * 24 * 3600
+        assert parse(f"{32 * 24 * 3600}s") == 32 * 24 * 3600
 
     def test_seconds_over_max_returns_none(self, parse):
-        assert parse(f"{30 * 24 * 3600 + 1}s") is None
+        assert parse(f"{32 * 24 * 3600 + 1}s") is None
 
 
 class TestParseInputHours:
@@ -662,11 +662,11 @@ class TestParseInputDays:
     def test_days_equals_equivalent_hours(self, parse):
         assert parse("7d") == parse("168h")
 
-    def test_30_days_is_max_boundary(self, parse):
-        assert parse("30d") == 30 * 86400
+    def test_32_days_is_max_boundary(self, parse):
+        assert parse("32d") == 32 * 86400
 
-    def test_31_days_over_max_returns_none(self, parse):
-        assert parse("31d") is None
+    def test_33_days_over_max_returns_none(self, parse):
+        assert parse("33d") is None
 
 
 class TestParseInputDayHourColonFormat:
@@ -696,7 +696,7 @@ class TestParseInputDayHourColonFormat:
         assert parse("1d 3:00:60") is None
 
     def test_over_max_duration_returns_none(self, parse):
-        assert parse("31d 0:00:00") is None
+        assert parse("33d 0:00:00") is None
 
     def test_missing_space_does_not_match(self, parse):
         # not the format fmt() produces — reasonable to reject rather than
@@ -752,8 +752,8 @@ class TestParseInputColonFormat:
         assert parse("99:59:59") == 359999
 
     def test_result_over_new_max_returns_none(self, parse):
-        # colon format has no day unit, so express the 30-day cap as hours
-        over_max_hours = (30 * 24) + 1
+        # colon format has no day unit, so express the 32-day cap as hours
+        over_max_hours = (32 * 24) + 1
         assert parse(f"{over_max_hours}:00:00") is None
 
 
@@ -795,7 +795,7 @@ class TestParseInputEdgeCases:
         assert parse("6000") == 6000 * 60
 
     def test_minutes_over_new_max_returns_none(self, parse):
-        over_max_minutes = (30 * 24 * 60) + 1
+        over_max_minutes = (32 * 24 * 60) + 1
         assert parse(str(over_max_minutes)) is None
 
     def test_case_insensitive_suffix(self, parse):
@@ -841,7 +841,7 @@ class TestParseInputMixedUnits:
         assert parse("x3h14m") is None
 
     def test_mixed_over_max_duration_returns_none(self, parse):
-        assert parse("31d") is None
+        assert parse("33d") is None
 
     def test_bare_number_still_means_minutes_not_a_bad_token(self, parse):
         # unchanged legacy behaviour: no unit at all still means minutes
@@ -902,5 +902,5 @@ class TestFmt:
         # matches the existing non-day hour format's own convention
         assert fmt_fn(86400 + 3 * 3600) == "1d 3:00:00"
 
-    def test_thirty_day_max_boundary(self, fmt_fn):
-        assert fmt_fn(30 * 86400 - 1) == "29d 23:59:59"
+    def test_thirty_two_day_max_boundary(self, fmt_fn):
+        assert fmt_fn(32 * 86400 - 1) == "31d 23:59:59"

@@ -6,7 +6,7 @@ import json
 import os
 import base64
 
-__version__ = "0.10.0"
+__version__ = "0.11.0"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -419,6 +419,20 @@ def _make_tip(parent=None):
         font=ctk.CTkFont(size=16),
     )
 
+def _wire_tooltip(btn, tip, text_fn):
+    """Hooks a corner-column button's hover to show/hide `tip`, placed just
+    right of the button. Returns the show function so a toggle handler can
+    refresh the tip's text while it's already visible (e.g. after a click)."""
+    def _show(event=None):
+        tip.configure(text=text_fn())
+        tip.place(x=btn.winfo_x() + btn.winfo_width() + 4, y=btn.winfo_y() + 3)
+        tip.lift()
+    def _hide(event=None):
+        tip.place_forget()
+    btn.bind("<Enter>", _show)
+    btn.bind("<Leave>", _hide)
+    return _show
+
 
 # ── Timer widget ───────────────────────────────────────────────────────────────
 class TimerWidget(ctk.CTkFrame):
@@ -435,19 +449,15 @@ class TimerWidget(ctk.CTkFrame):
         self.editing_countdown = False
         self.edit_var = ctk.StringVar()
         # Restore mid-run timers as paused; treat finished as idle
-        if initial_state in ("running", "paused") and initial_remaining is not None and initial_remaining > 0:
-            self.remaining_seconds = initial_remaining
-            self.state = "idle"
-            self.last_valid_display = fmt(initial_duration)
-            self.display_var = ctk.StringVar(value=fmt(initial_remaining))
-            self._build(deletable, on_delete, initial_title)
+        restore_paused = (initial_state in ("running", "paused")
+                          and initial_remaining is not None and initial_remaining > 0)
+        self.remaining_seconds = initial_remaining if restore_paused else initial_duration
+        self.state = "idle"
+        self.last_valid_display = fmt(initial_duration)
+        self.display_var = ctk.StringVar(value=fmt(self.remaining_seconds))
+        self._build(deletable, on_delete, initial_title)
+        if restore_paused:
             root.after_idle(lambda: self._set_state("paused"))
-        else:
-            self.remaining_seconds = initial_duration
-            self.state = "idle"
-            self.last_valid_display = fmt(initial_duration)
-            self.display_var = ctk.StringVar(value=fmt(initial_duration))
-            self._build(deletable, on_delete, initial_title)
 
     def _build(self, deletable, on_delete, initial_title=""):
         if deletable:
@@ -683,7 +693,7 @@ class TimerWidget(ctk.CTkFrame):
         # Absorb any required-height change so buttons are never squashed.
         # During _build the widget isn't packed yet; add_timer fits afterwards.
         if any(t is self for _s, t in timers):
-            _fit_window_any(preserve=True)
+            _fit_window()
 
     # ── Countdown click-to-edit ────────────────────────────────────────────────
     def _on_countdown_click(self, event=None):
@@ -693,7 +703,7 @@ class TimerWidget(ctk.CTkFrame):
         self.edit_var.set(self.last_valid_display if self.state == "finished" else self.display_var.get())
         self.countdown_label.pack_forget()
         self.countdown_entry.pack(padx=8, pady=1)
-        _fit_window_any(preserve=True)
+        _fit_window()
         self.countdown_entry.focus()
         self.countdown_entry.after(10, lambda: self.countdown_entry.select_range(0, "end"))
 
@@ -705,7 +715,7 @@ class TimerWidget(ctk.CTkFrame):
         seconds = parse_input(text)
         self.countdown_entry.pack_forget()
         self.countdown_label.pack(padx=8, pady=1)
-        _fit_window_any(preserve=True)
+        _fit_window()
         if seconds is None:
             if self.state in ("running", "paused"):
                 self.display_var.set(fmt(self.remaining_seconds))
@@ -792,7 +802,7 @@ def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initi
         # its own sound_mode is left as-is, only the controls grey out.
         _set_sound_controls_enabled(tw, False)
     _place_add_tile()
-    _fit_window_any()
+    _fit_window()
     _save_settings()
 
 def remove_timer(tw):
@@ -808,43 +818,19 @@ def remove_timer(tw):
             timers.pop(i)
             break
     _place_add_tile()
-    _fit_window_any()
+    _fit_window()
     _save_settings()
 
-def _fit_window(preserve=False, width=None):
-    """Stack-mode sizing: pins the window to its exact required size, the
-    same fixed-size/no-drag-resize behavior as row mode — every timer is
-    always fully shown, no partial-reveal collapse.
-
-    `preserve`/`width` are accepted so every existing call site still works
-    unchanged, but neither has anything left to do now that there's a
-    single fixed target instead of a range of collapse points."""
+def _fit_window():
+    """Pins the window to its exact required size in either layout mode —
+    every timer/box is fixed-size and always fully shown, so there's
+    nothing for the user to drag-resize into."""
     root.update_idletasks()
     w = root.winfo_reqwidth()
     h = root.winfo_reqheight()
     root.minsize(w, h)
     root.maxsize(w, h)
     root.geometry(f"{w}x{h}")
-
-def _fit_window_row():
-    """Row-mode sizing: every box is fixed-size and all timers are always
-    shown, so the window is just locked to exactly fit its natural required
-    size — min and max pinned equal, so there's nothing for the user to
-    drag-resize into."""
-    root.update_idletasks()
-    w = root.winfo_reqwidth()
-    h = root.winfo_reqheight()
-    root.minsize(w, h)
-    root.maxsize(w, h)
-    root.geometry(f"{w}x{h}")
-
-def _fit_window_any(preserve=False, width=None):
-    """Mode-aware dispatcher — use this from anywhere that isn't already
-    known to be stack-only (e.g. TimerWidget state changes, add/remove)."""
-    if _layout_mode == "stack":
-        _fit_window(preserve=preserve, width=width)
-    else:
-        _fit_window_row()
 
 # ── Layout mode toggle (stack ↔ row) ────────────────────────────────────────────
 def _relayout_timers():
@@ -868,15 +854,7 @@ def _toggle_layout_mode():
     _layout_mode = "row" if _layout_mode == "stack" else "stack"
     _relayout_timers()
     _place_add_tile()
-    if _layout_mode == "stack":
-        # row mode's leftover width is meaningless in a single-column
-        # layout — snap to the new stack's own natural width instead of
-        # preserving it (see _fit_window's `width` param)
-        root.update_idletasks()
-        new_width = root.winfo_reqwidth()
-    else:
-        new_width = None
-    _fit_window_any(width=new_width)
+    _fit_window()
     _update_layout_btn()
     _save_settings()
     if _layout_tip.winfo_ismapped():
@@ -954,13 +932,6 @@ def _update_pin():
 
 _tip = _make_tip()
 
-def _show_tip(event=None):
-    _tip.configure(text="Always on top: On" if topmost_var.get() else "Always on top: Off")
-    _tip.place(x=pin_btn.winfo_x() + pin_btn.winfo_width() + 4, y=pin_btn.winfo_y() + 3)
-
-def _hide_tip(event=None):
-    _tip.place_forget()
-
 pin_btn = ctk.CTkButton(
     root, text="↑", width=26, height=26,
     font=ctk.CTkFont(size=16, weight="bold"),
@@ -969,8 +940,10 @@ pin_btn = ctk.CTkButton(
     command=toggle_topmost,
 )
 pin_btn.place(x=4, y=4)
-pin_btn.bind("<Enter>", _show_tip)
-pin_btn.bind("<Leave>", _hide_tip)
+_show_tip = _wire_tooltip(
+    pin_btn, _tip,
+    lambda: "Always on top: On" if topmost_var.get() else "Always on top: Off",
+)
 
 # ── Volume control ─────────────────────────────────────────────────────────────
 # One button, not two — clicking it pops a slider that reads/writes this
@@ -1039,13 +1012,6 @@ def _update_mute_btn():
 
 _mute_tip = _make_tip()
 
-def _show_mute_tip(event=None):
-    _mute_tip.configure(text="Muted: On" if _muted else "Muted: Off")
-    _mute_tip.place(x=mute_btn.winfo_x() + mute_btn.winfo_width() + 4, y=mute_btn.winfo_y() + 3)
-
-def _hide_mute_tip(event=None):
-    _mute_tip.place_forget()
-
 mute_btn = ctk.CTkButton(
     root, text="🔇", width=26, height=26,  # a real muted-speaker glyph, not a generic "no" circle
     font=ctk.CTkFont(size=16, weight="bold"),  # matches the rest of the corner column
@@ -1054,18 +1020,10 @@ mute_btn = ctk.CTkButton(
     command=toggle_mute,
 )
 mute_btn.place(x=4, y=114)  # aligned with every timer's own icon row (measured), not the corner column
-mute_btn.bind("<Enter>", _show_mute_tip)
-mute_btn.bind("<Leave>", _hide_mute_tip)
+_show_mute_tip = _wire_tooltip(mute_btn, _mute_tip, lambda: "Muted: On" if _muted else "Muted: Off")
 
 # ── Layout mode toggle button ──────────────────────────────────────────────────
 _layout_tip = _make_tip()
-
-def _show_layout_tip(event=None):
-    _layout_tip.configure(text="Switch to stack layout" if _layout_mode == "row" else "Switch to row layout")
-    _layout_tip.place(x=layout_btn.winfo_x() + layout_btn.winfo_width() + 4, y=layout_btn.winfo_y() + 3)
-
-def _hide_layout_tip(event=None):
-    _layout_tip.place_forget()
 
 def _update_layout_btn():
     # Icon shows where clicking takes you, not the current state — in stack
@@ -1083,8 +1041,10 @@ layout_btn = ctk.CTkButton(
     command=_toggle_layout_mode,
 )
 layout_btn.place(x=4, y=32)
-layout_btn.bind("<Enter>", _show_layout_tip)
-layout_btn.bind("<Leave>", _hide_layout_tip)
+_show_layout_tip = _wire_tooltip(
+    layout_btn, _layout_tip,
+    lambda: "Switch to stack layout" if _layout_mode == "row" else "Switch to row layout",
+)
 
 # ── Init — apply persisted settings ───────────────────────────────────────────
 _build_wavs()
