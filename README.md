@@ -17,7 +17,7 @@
 
 **A free Windows desktop timer that stays on top of everything else.**
 
-About Time keeps your countdowns always visible, no matter what you're working on. Run up to 5 named task timers simultaneously, each with its own label and countdown, and choose from an optional family of notification sounds when each one finishes. Perfect for productivity workflows where you need a floating timer that doesn't disappear behind your browser or IDE.
+About Time keeps your countdowns always visible, no matter what you're working on. Run up to 5 named task timers simultaneously, each with its own label and countdown, and choose from an optional set of notification sounds when each one finishes. Designed for people who are constantly needing to switch tabs (and monitors) without losing track of time left on something else.
 
 1. [Why This Exists](#why-this-exists)
 1. [Download](#download)
@@ -27,9 +27,9 @@ About Time keeps your countdowns always visible, no matter what you're working o
 
 ## Why This Exists
 
-Every always-on-top timer solution I found was either bundled into something heavier than I wanted (a full productivity suite, a Pomodoro app with its own opinionated workflow) or was a single fixed timer with no room for running several named countdowns side by side. I wanted something narrower: a small floating window, several independent timers I could label myself, sane persistence so a timer I'm mid-way through survives a restart, and nothing else competing for attention.
+I wanted something to keep track of time during tasks or to use for short term reminders on my computer, and every app I tried either offered way more than I needed in scope or did not have the ability to just stay on top of other windows, making it easy to lose track of when I have to context switch for whatever came up next.
 
-About Time is that — built to fit a personal need first, and shared because a small focused tool that does one thing well tends to be useful to more people than just the one who built it. It's also an ongoing practical exercise in working with Claude Code as an AI-assisted development tool, developed in the open as both a working app and a real example of that workflow.
+About time is that tool for me. I built it with Claude Code because I wanted something that would let me more easily keep track of daily deadlines, time limits, little reminders like checking on the cooking while working, all without losing track of the actual time left when I'm constantly having to change tabs, programs or entire monitors.
 
 ## Download
 
@@ -40,19 +40,19 @@ No Python or code needed.
 ## Features
 
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
-- Run up to **5 simultaneous countdown timers** at once, each independently named and tracked
-- Custom time input per timer, up to 30 days: plain numbers assumed as minutes, suffix with `s`/`m`/`h`/`d` for a single unit, mix units in one go — `3h14m`, `1d2h15m` — or type a clock format directly (`90:00`, `1:30:00`, `2d 3:45:12`). Past 24 hours the countdown displays as `Nd H:MM:SS`
-- Click the countdown display to edit the time at any point — even mid-run
+- Run between from between **1 to 5 countdown timers** at once, each allowing a unique name and sound or popup notification setting.
+- Custom time input per timer, supporting up to 30 days: plain number input is assumed to be minutes, otherwise you can suffix with `s`/`m`/`h`/`d` for a single unit and mix units in one go — `3h14m`, `1d2h15m`
+- Click the countdown display to edit the time at any point — even with on-going timers.
 - **Windows desktop notifications** — opt-in toast alerts when a timer finishes, toggled per timer, showing that timer's name or duration if untitled
 
 ### Sounds
 
 <img src="Assets/single_timer_sound_picker.png" alt="A single timer in stack mode with its sound picker active" align="right" width="240">
 
-- Three notification chimes — short, medium, and long — designed as a matched family with consistent tone and feel
+- Three notification chimes — short, medium, and long, designed as a consistent family
 - Each timer has its own sound picker — pick short, medium, or long, or click the active one again to turn that timer's sound off
-- **Mute** — silences every timer at once without touching any timer's own sound choice; per-timer sound pickers are locked while muted
-- **Windows Volume Mixer integration** — the speaker icon opens a slider that controls this app's own volume directly in Windows' native per-app mixer (click outside the slider to close it)
+- **Global mute** — silences every timer at once without touching any timer's own sound choice; per-timer sound pickers are locked while muted
+- **Windows Volume Mixer integration** — the speaker icon opens a slider that controls this app's own volume directly in Windows' native per-app mixer
 
 <br clear="right">
 
@@ -62,20 +62,19 @@ No Python or code needed.
 
 - **Layout toggle** — switch between a vertical stack and a horizontal row of timers; boxes stay a fixed size in either layout
 - Add timers one at a time via the **+** tile at the end of the stack/row; remove any individual slot with its **x** button — no need to manage a fixed set
-- The window isn't manually resizable by design — it automatically sizes itself to exactly fit however many timers you currently have, in whichever layout you're in, so there's never dead space or a cropped timer to fight with
-- Every timer box holds its size regardless of state — idle, running, paused, or just finished — so the window never jumps around as a countdown changes
+- To keep things simple, the window has a locked size per timer, automatically resizing as timers are added, removed or the window layout is switched.
 
 <br clear="right">
 
 ### Persistence
 
-- Window position, timer count, timer names and durations are all remembered between sessions
+- Window position, timer count, timer names and durations should all be remembered between sessions
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
-- Sound choice and notification preference are saved per timer automatically; always-on-top and layout mode are saved globally
+- Settings such as sound choice, always-on-top, notification toggle and more are written to %appdata%\About Time\settings.json - if you need the file for some reason, check appdata roaming.
 
 ## Known Issues / Notes
 
-- **First launch starts at 50% volume, not your system default.** This is intentional, not a bug: a brand-new Windows audio session for an app defaults to 100%, and About Time's own volume lives entirely in Windows' per-app Volume Mixer (see Sounds above). Rather than risk a first-ever countdown finishing at full blast on whatever your system volume happens to be, first launch caps that fresh session to 50% — adjust it anytime with the speaker icon, it's a one-time starting point, not a ceiling.
+- **First launch should always start at 50% volume, not your system default.** This is intentional, not a bug: a brand-new Windows audio session for an app defaults to 100%, and About Time's own volume lives entirely in Windows' per-app Volume Mixer (see Sounds above). Because of this combination of settings, it's a risk that the first alarm is VERY LOUD for users who may have high speak settings, so I've pre-lowered the volume to soften that. You can always edit this yourself if you find it too quiet. 
 
 ## Tech Stack
 
