@@ -1011,13 +1011,6 @@ def _update_mute_btn():
 
 _mute_tip = _make_tip()
 
-def _show_mute_tip(event=None):
-    _mute_tip.configure(text="Muted: On" if _muted else "Muted: Off")
-    _mute_tip.place(x=mute_btn.winfo_x() + mute_btn.winfo_width() + 4, y=mute_btn.winfo_y() + 3)
-
-def _hide_mute_tip(event=None):
-    _mute_tip.place_forget()
-
 mute_btn = ctk.CTkButton(
     root, text="🔇", width=26, height=26,  # a real muted-speaker glyph, not a generic "no" circle
     font=ctk.CTkFont(size=16, weight="bold"),  # matches the rest of the corner column
@@ -1026,8 +1019,7 @@ mute_btn = ctk.CTkButton(
     command=toggle_mute,
 )
 mute_btn.place(x=4, y=114)  # aligned with every timer's own icon row (measured), not the corner column
-mute_btn.bind("<Enter>", _show_mute_tip)
-mute_btn.bind("<Leave>", _hide_mute_tip)
+_show_mute_tip = _wire_tooltip(mute_btn, _mute_tip, lambda: "Muted: On" if _muted else "Muted: Off")
 
 # ── Layout mode toggle button ──────────────────────────────────────────────────
 _layout_tip = _make_tip()
