@@ -1013,11 +1013,9 @@ volume_btn = ctk.CTkButton(
 volume_btn.place(x=34, y=4)
 
 # ── Global mute ────────────────────────────────────────────────────────────────
-# A real toggle over every timer's own sound choice, not a separate hidden
-# override: muting blanks each timer's sound (and its icon row reflects
-# that, same as if the user had clicked each one off individually), and
-# remembers what each was set to so unmuting can restore it. While muted,
-# each timer's sound icons are disabled outright — deliberately, so there's
+# A playback gate over every timer's own sound choice, not a data mutation
+# (see _muted above): each timer's sound_mode is left untouched, only its
+# sound icons are disabled outright while muted — deliberately, so there's
 # no way to end up with global mute showing "on" while some individual timer
 # is quietly making sound again. A timer opened while already muted (see
 # add_timer) is treated the same as one that was already there.
