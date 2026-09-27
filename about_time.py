@@ -435,19 +435,15 @@ class TimerWidget(ctk.CTkFrame):
         self.editing_countdown = False
         self.edit_var = ctk.StringVar()
         # Restore mid-run timers as paused; treat finished as idle
-        if initial_state in ("running", "paused") and initial_remaining is not None and initial_remaining > 0:
-            self.remaining_seconds = initial_remaining
-            self.state = "idle"
-            self.last_valid_display = fmt(initial_duration)
-            self.display_var = ctk.StringVar(value=fmt(initial_remaining))
-            self._build(deletable, on_delete, initial_title)
+        restore_paused = (initial_state in ("running", "paused")
+                          and initial_remaining is not None and initial_remaining > 0)
+        self.remaining_seconds = initial_remaining if restore_paused else initial_duration
+        self.state = "idle"
+        self.last_valid_display = fmt(initial_duration)
+        self.display_var = ctk.StringVar(value=fmt(self.remaining_seconds))
+        self._build(deletable, on_delete, initial_title)
+        if restore_paused:
             root.after_idle(lambda: self._set_state("paused"))
-        else:
-            self.remaining_seconds = initial_duration
-            self.state = "idle"
-            self.last_valid_display = fmt(initial_duration)
-            self.display_var = ctk.StringVar(value=fmt(initial_duration))
-            self._build(deletable, on_delete, initial_title)
 
     def _build(self, deletable, on_delete, initial_title=""):
         if deletable:
