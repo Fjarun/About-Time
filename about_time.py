@@ -419,6 +419,19 @@ def _make_tip(parent=None):
         font=ctk.CTkFont(size=16),
     )
 
+def _wire_tooltip(btn, tip, text_fn):
+    """Hooks a corner-column button's hover to show/hide `tip`, placed just
+    right of the button. Returns the show function so a toggle handler can
+    refresh the tip's text while it's already visible (e.g. after a click)."""
+    def _show(event=None):
+        tip.configure(text=text_fn())
+        tip.place(x=btn.winfo_x() + btn.winfo_width() + 4, y=btn.winfo_y() + 3)
+    def _hide(event=None):
+        tip.place_forget()
+    btn.bind("<Enter>", _show)
+    btn.bind("<Leave>", _hide)
+    return _show
+
 
 # ── Timer widget ───────────────────────────────────────────────────────────────
 class TimerWidget(ctk.CTkFrame):
