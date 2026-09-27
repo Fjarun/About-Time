@@ -64,8 +64,6 @@ No Python or code needed.
 - Add timers one at a time via the **+** tile at the end of the stack/row; remove any individual slot with its **x** button — no need to manage a fixed set
 - To keep things simple, the window has a locked size per timer, automatically resizing as timers are added, removed or the window layout is switched.
 
-<br clear="right">
-
 ### Persistence
 
 - Window position, timer count, timer names and durations should all be remembered between sessions
