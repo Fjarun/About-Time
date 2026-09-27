@@ -1040,8 +1040,10 @@ layout_btn = ctk.CTkButton(
     command=_toggle_layout_mode,
 )
 layout_btn.place(x=4, y=32)
-layout_btn.bind("<Enter>", _show_layout_tip)
-layout_btn.bind("<Leave>", _hide_layout_tip)
+_show_layout_tip = _wire_tooltip(
+    layout_btn, _layout_tip,
+    lambda: "Switch to stack layout" if _layout_mode == "row" else "Switch to row layout",
+)
 
 # ── Init — apply persisted settings ───────────────────────────────────────────
 _build_wavs()
