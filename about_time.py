@@ -1024,13 +1024,6 @@ _show_mute_tip = _wire_tooltip(mute_btn, _mute_tip, lambda: "Muted: On" if _mute
 # ── Layout mode toggle button ──────────────────────────────────────────────────
 _layout_tip = _make_tip()
 
-def _show_layout_tip(event=None):
-    _layout_tip.configure(text="Switch to stack layout" if _layout_mode == "row" else "Switch to row layout")
-    _layout_tip.place(x=layout_btn.winfo_x() + layout_btn.winfo_width() + 4, y=layout_btn.winfo_y() + 3)
-
-def _hide_layout_tip(event=None):
-    _layout_tip.place_forget()
-
 def _update_layout_btn():
     # Icon shows where clicking takes you, not the current state — in stack
     # mode a right arrow means "swap to row"; in row mode a down arrow means
