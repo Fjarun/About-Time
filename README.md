@@ -70,6 +70,8 @@ No Python or code needed.
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
 - Settings such as sound choice, always-on-top, notification toggle and more are written to %appdata%\About Time\settings.json - if you need the file for some reason, check appdata roaming.
 
+<br clear="right">
+
 ## Known Issues / Notes
 
 - **First launch should always start at 50% volume, not your system default.** This is intentional, not a bug: a brand-new Windows audio session for an app defaults to 100%, and About Time's own volume lives entirely in Windows' per-app Volume Mixer (see Sounds above). Because of this combination of settings, it's a risk that the first alarm is VERY LOUD for users who may have high speak settings, so I've pre-lowered the volume to soften that. You can always edit this yourself if you find it too quiet. 
