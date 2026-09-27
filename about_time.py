@@ -131,7 +131,7 @@ else:
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 MAX_TIMERS = 5
-MAX_DURATION_SECONDS = 30 * 24 * 3600  # 30 days
+MAX_DURATION_SECONDS = 32 * 24 * 3600  # 32 days
 _TITLE_PLACEHOLDER = "Click to enter title"
 _TITLE_PLACEHOLDER_COLOR = "#aaaaaa"
 _TITLE_TEXT_COLOR = "#ffffff"
