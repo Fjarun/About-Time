@@ -139,7 +139,7 @@ _TITLE_TEXT_COLOR = "#ffffff"
 # Fixed per-timer box size — every TimerWidget is forced to this size via
 # pack_propagate(False), regardless of state (idle/running/paused/finished
 # each naturally want different content width). Sized to comfortably fit the
-# countdown at its widest (the 30-day max duration renders as "30d 0:00:00")
+# countdown at its widest (the 32-day max duration renders as "32d 0:00:00")
 # and the 3-button paused-state row without crowding.
 TIMER_W = 240
 TIMER_H = 150
