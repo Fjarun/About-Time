@@ -931,13 +931,6 @@ def _update_pin():
 
 _tip = _make_tip()
 
-def _show_tip(event=None):
-    _tip.configure(text="Always on top: On" if topmost_var.get() else "Always on top: Off")
-    _tip.place(x=pin_btn.winfo_x() + pin_btn.winfo_width() + 4, y=pin_btn.winfo_y() + 3)
-
-def _hide_tip(event=None):
-    _tip.place_forget()
-
 pin_btn = ctk.CTkButton(
     root, text="↑", width=26, height=26,
     font=ctk.CTkFont(size=16, weight="bold"),
@@ -946,8 +939,10 @@ pin_btn = ctk.CTkButton(
     command=toggle_topmost,
 )
 pin_btn.place(x=4, y=4)
-pin_btn.bind("<Enter>", _show_tip)
-pin_btn.bind("<Leave>", _hide_tip)
+_show_tip = _wire_tooltip(
+    pin_btn, _tip,
+    lambda: "Always on top: On" if topmost_var.get() else "Always on top: Off",
+)
 
 # ── Volume control ─────────────────────────────────────────────────────────────
 # One button, not two — clicking it pops a slider that reads/writes this
