@@ -426,6 +426,7 @@ def _wire_tooltip(btn, tip, text_fn):
     def _show(event=None):
         tip.configure(text=text_fn())
         tip.place(x=btn.winfo_x() + btn.winfo_width() + 4, y=btn.winfo_y() + 3)
+        tip.lift()
     def _hide(event=None):
         tip.place_forget()
     btn.bind("<Enter>", _show)
