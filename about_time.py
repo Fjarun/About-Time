@@ -679,7 +679,7 @@ class TimerWidget(ctk.CTkFrame):
         # Absorb any required-height change so buttons are never squashed.
         # During _build the widget isn't packed yet; add_timer fits afterwards.
         if any(t is self for _s, t in timers):
-            _fit_window_any(preserve=True)
+            _fit_window()
 
     # ── Countdown click-to-edit ────────────────────────────────────────────────
     def _on_countdown_click(self, event=None):
@@ -689,7 +689,7 @@ class TimerWidget(ctk.CTkFrame):
         self.edit_var.set(self.last_valid_display if self.state == "finished" else self.display_var.get())
         self.countdown_label.pack_forget()
         self.countdown_entry.pack(padx=8, pady=1)
-        _fit_window_any(preserve=True)
+        _fit_window()
         self.countdown_entry.focus()
         self.countdown_entry.after(10, lambda: self.countdown_entry.select_range(0, "end"))
 
@@ -701,7 +701,7 @@ class TimerWidget(ctk.CTkFrame):
         seconds = parse_input(text)
         self.countdown_entry.pack_forget()
         self.countdown_label.pack(padx=8, pady=1)
-        _fit_window_any(preserve=True)
+        _fit_window()
         if seconds is None:
             if self.state in ("running", "paused"):
                 self.display_var.set(fmt(self.remaining_seconds))
@@ -788,7 +788,7 @@ def add_timer(deletable=False, initial_title="", initial_duration=15 * 60, initi
         # its own sound_mode is left as-is, only the controls grey out.
         _set_sound_controls_enabled(tw, False)
     _place_add_tile()
-    _fit_window_any()
+    _fit_window()
     _save_settings()
 
 def remove_timer(tw):
@@ -804,7 +804,7 @@ def remove_timer(tw):
             timers.pop(i)
             break
     _place_add_tile()
-    _fit_window_any()
+    _fit_window()
     _save_settings()
 
 def _fit_window():
@@ -840,15 +840,7 @@ def _toggle_layout_mode():
     _layout_mode = "row" if _layout_mode == "stack" else "stack"
     _relayout_timers()
     _place_add_tile()
-    if _layout_mode == "stack":
-        # row mode's leftover width is meaningless in a single-column
-        # layout — snap to the new stack's own natural width instead of
-        # preserving it (see _fit_window's `width` param)
-        root.update_idletasks()
-        new_width = root.winfo_reqwidth()
-    else:
-        new_width = None
-    _fit_window_any(width=new_width)
+    _fit_window()
     _update_layout_btn()
     _save_settings()
     if _layout_tip.winfo_ismapped():
