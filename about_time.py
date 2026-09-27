@@ -807,40 +807,16 @@ def remove_timer(tw):
     _fit_window_any()
     _save_settings()
 
-def _fit_window(preserve=False, width=None):
-    """Stack-mode sizing: pins the window to its exact required size, the
-    same fixed-size/no-drag-resize behavior as row mode — every timer is
-    always fully shown, no partial-reveal collapse.
-
-    `preserve`/`width` are accepted so every existing call site still works
-    unchanged, but neither has anything left to do now that there's a
-    single fixed target instead of a range of collapse points."""
+def _fit_window():
+    """Pins the window to its exact required size in either layout mode —
+    every timer/box is fixed-size and always fully shown, so there's
+    nothing for the user to drag-resize into."""
     root.update_idletasks()
     w = root.winfo_reqwidth()
     h = root.winfo_reqheight()
     root.minsize(w, h)
     root.maxsize(w, h)
     root.geometry(f"{w}x{h}")
-
-def _fit_window_row():
-    """Row-mode sizing: every box is fixed-size and all timers are always
-    shown, so the window is just locked to exactly fit its natural required
-    size — min and max pinned equal, so there's nothing for the user to
-    drag-resize into."""
-    root.update_idletasks()
-    w = root.winfo_reqwidth()
-    h = root.winfo_reqheight()
-    root.minsize(w, h)
-    root.maxsize(w, h)
-    root.geometry(f"{w}x{h}")
-
-def _fit_window_any(preserve=False, width=None):
-    """Mode-aware dispatcher — use this from anywhere that isn't already
-    known to be stack-only (e.g. TimerWidget state changes, add/remove)."""
-    if _layout_mode == "stack":
-        _fit_window(preserve=preserve, width=width)
-    else:
-        _fit_window_row()
 
 # ── Layout mode toggle (stack ↔ row) ────────────────────────────────────────────
 def _relayout_timers():
