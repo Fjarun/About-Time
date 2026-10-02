@@ -73,6 +73,7 @@ def pycaw_env():
         "__builtins__": __builtins__,
         "os": os,
         "sys": sys,
+        "_log_error": lambda message: None,
         "AudioUtilities": audio_utilities,
     }
     exec(src, ns)
@@ -201,6 +202,7 @@ def prime_audio_env():
         "__builtins__": __builtins__,
         "os": os,
         "sys": sys,
+        "_log_error": lambda message: None,
         "threading": __import__("threading"),
         "AudioUtilities": audio_utilities,
         "winsound": fake_winsound,

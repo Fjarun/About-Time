@@ -5,8 +5,9 @@ import re
 import json
 import os
 import base64
+import subprocess
 
-__version__ = "0.11.0"
+__version__ = "0.11.1"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -14,7 +15,7 @@ _wav_lock = threading.Lock()
 
 if sys.platform == "win32":
     from winotify import Notification
-    from winotify import TEMPLATE as _TOAST_TEMPLATE, _run_ps as _toast_run_ps
+    from winotify import TEMPLATE as _TOAST_TEMPLATE
     from pycaw.pycaw import AudioUtilities
     import winsound, struct, math
 
@@ -77,7 +78,7 @@ if sys.platform == "win32":
                 if proc is not None and proc.pid == pid:
                     return session
         except Exception as e:
-            print(f"[About Time] _find_own_audio_session failed: {e}", file=sys.stderr)
+            _log_error(f"_find_own_audio_session failed: {e}")
         return None
 
     def _get_app_volume():
@@ -90,7 +91,7 @@ if sys.platform == "win32":
             # e.g. the audio device was unplugged/switched between finding
             # the session and reading it — same "not available" outcome as
             # session is None above, just discovered a step later.
-            print(f"[About Time] _get_app_volume failed: {e}", file=sys.stderr)
+            _log_error(f"_get_app_volume failed: {e}")
             return None
 
     def _set_app_volume(level):
@@ -100,7 +101,7 @@ if sys.platform == "win32":
                 return
             session.SimpleAudioVolume.SetMasterVolume(max(0.0, min(1.0, level)), None)
         except Exception as e:
-            print(f"[About Time] _set_app_volume failed: {e}", file=sys.stderr)
+            _log_error(f"_set_app_volume failed: {e}")
 
     def _prime_audio_session(first_boot_volume=None):
         """A real (inaudibly quiet) PlaySound call — Windows only creates a
@@ -162,12 +163,48 @@ def _is_int(value):
     otherwise pass validation and get silently treated as 1/0."""
     return isinstance(value, int) and not isinstance(value, bool)
 
+MAX_TITLE_LEN = 100
+_MAX_SETTINGS_BYTES = 256 * 1024
+_MAX_LOG_BYTES = 256 * 1024
+
+def _log_error(message):
+    """stderr is invisible in the windowed exe, so errors also go to a small
+    log next to settings.json. Capped: past _MAX_LOG_BYTES the old log is
+    replaced by a fresh one. Logging must never itself raise."""
+    print(f"[About Time] {message}", file=sys.stderr)
+    try:
+        log_path = os.path.join(os.path.dirname(_SETTINGS_PATH), "error.log")
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        if os.path.exists(log_path) and os.path.getsize(log_path) > _MAX_LOG_BYTES:
+            os.replace(log_path, log_path + ".old")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"{message}\n")
+    except Exception:
+        pass
+
+def _clip_title(title):
+    return title[:MAX_TITLE_LEN]
+
+def _backup_corrupt_settings():
+    """Keeps the unreadable settings file as settings.json.bak (replacing any
+    older .bak) so the next save doesn't silently destroy it."""
+    try:
+        os.replace(_SETTINGS_PATH, _SETTINGS_PATH + ".bak")
+    except OSError:
+        pass
+
 def _load_settings():
     defaults = {"pinned": False, "layout_mode": "stack", "muted": False,
                 "window_x": None, "window_y": None, "timers": []}
     try:
+        if not os.path.exists(_SETTINGS_PATH):
+            return defaults
+        if os.path.getsize(_SETTINGS_PATH) > _MAX_SETTINGS_BYTES:
+            raise ValueError(f"settings file larger than {_MAX_SETTINGS_BYTES} bytes")
         with open(_SETTINGS_PATH) as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError("settings root is not an object")
         # Migration from the pre-per-timer-sound settings format: the old
         # global "sound" becomes the fallback default for timers that don't
         # carry their own "sound"/"notify" yet. An old global "mute" maps to
@@ -199,8 +236,7 @@ def _load_settings():
                 if not isinstance(t, dict):
                     continue
                 title = t.get("title", "")
-                if not isinstance(title, str):
-                    title = ""
+                title = _clip_title(title) if isinstance(title, str) else ""
                 dur = t.get("duration", 15 * 60)
                 if not _is_int(dur) or not (1 <= dur <= MAX_DURATION_SECONDS):
                     dur = 15 * 60
@@ -229,7 +265,7 @@ def _load_settings():
                                     "state": state, "sound": snd, "notify": ntf})
         else:
             # Migrate from legacy "titles" list
-            timer_data = [{"title": t if isinstance(t, str) else "", "duration": 15 * 60,
+            timer_data = [{"title": _clip_title(t) if isinstance(t, str) else "", "duration": 15 * 60,
                            "sound": legacy_timer_sound_default, "notify": legacy_notify_default}
                           for t in (titles or [""])]
         return {
@@ -241,7 +277,8 @@ def _load_settings():
             "timers":        timer_data,
         }
     except Exception as e:
-        print(f"[About Time] _load_settings failed: {e}", file=sys.stderr)
+        _log_error(f"_load_settings failed: {e}")
+        _backup_corrupt_settings()
         return defaults
 
 def _save_settings():
@@ -255,7 +292,7 @@ def _save_settings():
                 "muted":         _muted,
                 "window_x":      root.winfo_x(),
                 "window_y":      root.winfo_y(),
-                "timers":        [{"title": tw.title_entry.get() if tw.title_entry.get() != _TITLE_PLACEHOLDER else "",
+                "timers":        [{"title": _clip_title(tw.title_entry.get()) if tw.title_entry.get() != _TITLE_PLACEHOLDER else "",
                                    "duration": tw.duration_seconds,
                                    "remaining": tw.remaining_seconds,
                                    "state": tw.state,
@@ -265,7 +302,7 @@ def _save_settings():
             }, f, indent=2)
         os.replace(tmp, _SETTINGS_PATH)
     except Exception as e:
-        print(f"[About Time] _save_settings failed: {e}", file=sys.stderr)
+        _log_error(f"_save_settings failed: {e}")
         try:
             os.remove(tmp)
         except OSError:
@@ -291,6 +328,26 @@ def beep(sound_mode):
         wav = _WAVS.get(sound_mode)
     threading.Thread(target=_play, args=(wav,), daemon=True).start()
 
+def _toast_safe(text):
+    """Text headed for a toast's CDATA block: drop XML-illegal control
+    characters and defuse the "]]>" terminator (either would break out of the
+    CDATA section or make the XML fail to parse)."""
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    return text.replace("]]>", "] ] >").strip()
+
+def _run_toast_script(script):
+    """Runs the toast script through PowerShell located by absolute System32
+    path, not a PATH lookup, so a planted powershell.exe can't be picked up."""
+    ps = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
+                      "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    si = subprocess.STARTUPINFO()
+    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    subprocess.Popen(
+        [ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL, startupinfo=si,
+    )
+
 def notify(title, duration):
     """Shows a Windows toast when a timer finishes.
 
@@ -306,7 +363,7 @@ def notify(title, duration):
     """
     if sys.platform != "win32":
         return
-    safe_title = str(title)[:50].strip() if title else ""
+    safe_title = _toast_safe(str(title)[:50]) if title else ""
     msg = f"Your timer '{safe_title}' has finished." if safe_title else f"Your {duration} timer has finished."
     msg_b64 = base64.b64encode(msg.encode("utf-8")).decode("ascii")
 
@@ -319,7 +376,7 @@ def notify(title, duration):
             "$Msg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($MsgB64))\n"
             + _TOAST_TEMPLATE.format(**toast.__dict__)
         )
-        _toast_run_ps(command=script)
+        _run_toast_script(script)
     threading.Thread(target=_send, daemon=True).start()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

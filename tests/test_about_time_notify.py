@@ -6,19 +6,21 @@ the toast-notification RCE — see about_time.py's notify() docstring).
 
 Same source-extraction strategy as test_about_time.py: notify() itself has
 no GUI dependency, but it does spawn a background thread that shells out to
-PowerShell via _toast_run_ps. Both threading.Thread and _toast_run_ps are
+PowerShell via _run_toast_script. Both threading.Thread and _run_toast_script are
 replaced with synchronous test doubles here so no real thread or process is
 ever created — the "script" that would have been run is just captured for
 inspection instead.
 """
 
 import base64
+import os
 import re
+import subprocess
 import types
 from pathlib import Path
 
 import pytest
-from winotify import Notification, TEMPLATE as _TOAST_TEMPLATE, _run_ps
+from winotify import Notification, TEMPLATE as _TOAST_TEMPLATE
 
 SRC_PATH = Path(__file__).parent.parent / "about_time.py"
 SOURCE = SRC_PATH.read_text(encoding="utf-8")
@@ -42,7 +44,7 @@ class _SyncThread:
 def notify_env():
     calls = []
     match = re.search(
-        r"(^def notify\(title, duration\):.*?)(?=^# ── Helpers)",
+        r"(^def _toast_safe\(text\):.*?)(?=^# ── Helpers)",
         SOURCE, re.DOTALL | re.MULTILINE,
     )
     assert match, "notify() not found in source"
@@ -53,9 +55,12 @@ def notify_env():
         "threading": types.SimpleNamespace(Thread=_SyncThread),
         "Notification": Notification,
         "_TOAST_TEMPLATE": _TOAST_TEMPLATE,
-        "_toast_run_ps": lambda command: calls.append(command),
+        "os": os,
+        "re": re,
+        "subprocess": subprocess,
     }
     exec(match.group(1), ns)
+    ns["_run_toast_script"] = lambda script: calls.append(script)
     ns["_ps_calls"] = calls
     return ns
 
@@ -118,3 +123,42 @@ class TestNotifyTitleNeverLiteralInScript:
 
         assert payload not in script
         assert _decode_msg(script) == f"Your timer '{payload[:50]}' has finished."
+
+
+class TestToastXmlSafety:
+    """A title containing the CDATA terminator must not be able to close the
+    CDATA section and inject toast XML."""
+
+    def test_cdata_terminator_neutralised(self, notify_env):
+        notify_env["notify"]("a]]><x/>", "5:00")
+        msg = _decode_msg(notify_env["_ps_calls"][0])
+        assert "]]>" not in msg
+
+    def test_control_characters_stripped(self, notify_env):
+        notify_env["notify"]("a\x00b\x08c", "5:00")
+        msg = _decode_msg(notify_env["_ps_calls"][0])
+        assert msg == "Your timer 'abc' has finished."
+
+
+class TestRunToastScript:
+    """PowerShell is launched by absolute System32 path, not PATH lookup."""
+
+    def test_uses_absolute_system32_powershell(self, monkeypatch):
+        seen = {}
+
+        class _FakeSI:
+            dwFlags = 0
+
+        monkeypatch.setattr(subprocess, "STARTUPINFO", _FakeSI, raising=False)
+        monkeypatch.setattr(subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
+        monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: seen.update(cmd=cmd))
+        monkeypatch.setenv("SystemRoot", r"C:\Windows")
+        match = re.search(r"(^def _run_toast_script\(script\):.*?)(?=^def notify)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        ns = {"os": os, "subprocess": subprocess}
+        exec(match.group(1), ns)
+        ns["_run_toast_script"]("echo hi")
+        exe = seen["cmd"][0]
+        assert os.path.isabs(exe)
+        assert exe.lower().endswith(r"system32\windowspowershell\v1.0\powershell.exe")
+        assert seen["cmd"][-1] == "echo hi"
