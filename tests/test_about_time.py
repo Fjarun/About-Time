@@ -450,6 +450,61 @@ class TestLoadSettingsInvalidFieldValues:
         assert r["timers"][0]["title"] == ""
 
 
+class TestLoadSettingsHardening:
+    def test_long_title_clipped_to_100_chars(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"timers": [{"title": "x" * 3000}]}))
+        assert fn()["timers"][0]["title"] == "x" * 100
+
+    def test_legacy_title_clipped_too(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"titles": ["y" * 500]}))
+        assert fn()["timers"][0]["title"] == "y" * 100
+
+    def test_oversize_file_rejected_not_parsed(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"timers": [{"title": "ok"}], "pad": "z" * (300 * 1024)}))
+        result = fn()
+        assert result["timers"] == []
+        assert f.with_name("settings.json.bak").exists()
+
+    def test_corrupt_file_kept_as_bak(self, load):
+        fn, f = load
+        f.write_text("{not json")
+        fn()
+        bak = f.with_name("settings.json.bak")
+        assert bak.read_text() == "{not json"
+        assert not f.exists()
+
+    def test_non_object_root_treated_as_corrupt(self, load):
+        fn, f = load
+        f.write_text("[1, 2, 3]")
+        assert fn()["timers"] == []
+        assert f.with_name("settings.json.bak").exists()
+
+    def test_missing_file_makes_no_bak_or_log(self, load):
+        fn, f = load
+        fn()
+        assert not f.with_name("settings.json.bak").exists()
+        assert not f.with_name("error.log").exists()
+
+    def test_failure_written_to_error_log(self, load):
+        fn, f = load
+        f.write_text("{not json")
+        fn()
+        assert "_load_settings failed" in f.with_name("error.log").read_text()
+
+
+class TestLogErrorCap:
+    def test_log_rotated_when_over_cap(self, ns):
+        namespace, f = ns
+        log = f.with_name("error.log")
+        log.write_text("a" * (namespace["_MAX_LOG_BYTES"] + 10))
+        namespace["_log_error"]("fresh")
+        assert log.read_text().strip() == "fresh"
+        assert log.with_name("error.log.old").exists()
+
+
 class TestLoadSettingsLegacyTitlesMigration:
     def _write(self, path, data):
         path.write_text(json.dumps(data), encoding="utf-8")
