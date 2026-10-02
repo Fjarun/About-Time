@@ -7,7 +7,7 @@ import os
 import base64
 import subprocess
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -177,8 +177,9 @@ def _log_error(message):
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         if os.path.exists(log_path) and os.path.getsize(log_path) > _MAX_LOG_BYTES:
             os.replace(log_path, log_path + ".old")
+        from datetime import datetime
         with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"{message}\n")
+            f.write(f"{datetime.now().isoformat(timespec='seconds')} {message}\n")
     except Exception:
         pass
 
@@ -218,7 +219,7 @@ def _load_settings():
             legacy_timer_sound_default = None
         else:
             legacy_timer_sound_default = "short"
-        legacy_notify_default = bool(data.get("notifications", False))
+        legacy_notify_default = data.get("notifications") is True
         raw_titles = data.get("titles")
         titles = raw_titles[:MAX_TIMERS] if isinstance(raw_titles, list) else None
         win_x = data.get("window_x")
@@ -269,9 +270,9 @@ def _load_settings():
                            "sound": legacy_timer_sound_default, "notify": legacy_notify_default}
                           for t in (titles or [""])]
         return {
-            "pinned":        bool(data.get("pinned", defaults["pinned"])),
+            "pinned":        data["pinned"] if isinstance(data.get("pinned"), bool) else defaults["pinned"],
             "layout_mode":   layout_mode,
-            "muted":         bool(data.get("muted", defaults["muted"])),
+            "muted":         data["muted"] if isinstance(data.get("muted"), bool) else defaults["muted"],
             "window_x":      win_x,
             "window_y":      win_y,
             "timers":        timer_data,
@@ -330,20 +331,23 @@ def beep(sound_mode):
 
 def _toast_safe(text):
     """Text headed for a toast's CDATA block: drop XML-illegal control
-    characters and defuse the "]]>" terminator (either would break out of the
-    CDATA section or make the XML fail to parse)."""
-    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    and lone-surrogate/non-character code points (these break the UTF-8 encode
+    or the XML parse) and defuse the "]]>" terminator (which would break out of
+    the CDATA section)."""
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]", "", text)
     return text.replace("]]>", "] ] >").strip()
 
 def _run_toast_script(script):
     """Runs the toast script through PowerShell located by absolute System32
     path, not a PATH lookup, so a planted powershell.exe can't be picked up."""
-    ps = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"),
-                      "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    root = os.environ.get("SystemRoot", "")
+    if not (os.path.isabs(root) and os.path.isdir(root)):
+        root = r"C:\Windows"
+    ps = os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     subprocess.Popen(
-        [ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
+        [ps, "-NoProfile", "-Command", script],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL, startupinfo=si,
     )

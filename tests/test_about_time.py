@@ -501,7 +501,7 @@ class TestLogErrorCap:
         log = f.with_name("error.log")
         log.write_text("a" * (namespace["_MAX_LOG_BYTES"] + 10))
         namespace["_log_error"]("fresh")
-        assert log.read_text().strip() == "fresh"
+        assert log.read_text().strip().endswith(" fresh")
         assert log.with_name("error.log.old").exists()
 
 

@@ -162,3 +162,24 @@ class TestRunToastScript:
         assert os.path.isabs(exe)
         assert exe.lower().endswith(r"system32\windowspowershell\v1.0\powershell.exe")
         assert seen["cmd"][-1] == "echo hi"
+
+
+class TestWinotifyTemplateAssumptions:
+    """notify()'s injection fix only holds if winotify's template still puts
+    {msg} as plain text inside a PowerShell @"..."@ here-string, wrapped in
+    CDATA. Fails loudly if a winotify upgrade changes that layout, instead of
+    toasts silently breaking or the "$Msg" placeholder behaving differently."""
+
+    def test_msg_is_cdata_inside_here_string(self):
+        start = _TOAST_TEMPLATE.index('@"')
+        end = _TOAST_TEMPLATE.index('"@', start + 2)
+        here_string = _TOAST_TEMPLATE[start:end]
+        assert "<![CDATA[{msg}]]>" in here_string
+
+    def test_msg_appears_exactly_once(self):
+        assert _TOAST_TEMPLATE.count("{msg}") == 1
+
+    def test_pinned_winotify_version(self):
+        from importlib.metadata import version
+        pinned = re.search(r"^winotify==(\S+)", (SRC_PATH.parent / "requirements.txt").read_text(), re.M).group(1)
+        assert version("winotify") == pinned
