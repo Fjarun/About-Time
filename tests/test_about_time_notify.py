@@ -183,3 +183,123 @@ class TestWinotifyTemplateAssumptions:
         from importlib.metadata import version
         pinned = re.search(r"^winotify==(\S+)", (SRC_PATH.parent / "requirements.txt").read_text(), re.M).group(1)
         assert version("winotify") == pinned
+
+
+class TestToastSafe:
+    @pytest.mark.parametrize("bad", ["\ud800", "\udbff", "\udc00", "\udfff", "\ufffe", "\uffff"])
+    def test_surrogates_and_noncharacters_stripped(self, notify_env, bad):
+        assert notify_env["_toast_safe"](f"a{bad}b") == "ab"
+
+    def test_c0_controls_stripped_but_tab_newline_cr_kept_inside(self, notify_env):
+        out = notify_env["_toast_safe"]("a\x00\x08\x0b\x0c\x0e\x1fb\tc\nd\re")
+        assert out == "ab\tc\nd\re"
+
+    def test_cdata_terminator_defused_exactly(self, notify_env):
+        assert notify_env["_toast_safe"]("a]]>b") == "a] ] >b"
+
+    def test_result_has_no_cdata_terminator_even_when_repeated(self, notify_env):
+        assert "]]>" not in notify_env["_toast_safe"]("]]>]]>]]]>")
+
+    def test_terminator_split_by_stripped_char_is_still_defused(self, notify_env):
+        # stripping happens first, so "]]\x00>" collapses to "]]>" and must be defused
+        out = notify_env["_toast_safe"]("]]\x00>")
+        assert "]]>" not in out
+
+    def test_result_is_stripped(self, notify_env):
+        assert notify_env["_toast_safe"]("  \t hi \n ") == "hi"
+
+    def test_empty_string_returns_empty(self, notify_env):
+        assert notify_env["_toast_safe"]("") == ""
+
+    def test_only_illegal_chars_returns_empty(self, notify_env):
+        assert notify_env["_toast_safe"]("\x00\ud800\uffff") == ""
+
+    def test_result_is_utf8_encodable(self, notify_env):
+        out = notify_env["_toast_safe"]("x\ud83d\ude00y")  # lone surrogate pair halves
+        assert out.encode("utf-8") == b"xy"
+
+    def test_normal_unicode_preserved(self, notify_env):
+        assert notify_env["_toast_safe"]("caf\u00e9 \u65e5\u672c") == "caf\u00e9 \u65e5\u672c"
+
+    def test_non_string_raises_type_error(self, notify_env):
+        with pytest.raises(TypeError):
+            notify_env["_toast_safe"](None)
+
+
+class TestNotifySurrogateTitle:
+    def test_surrogate_title_does_not_raise_and_message_decodes(self, notify_env):
+        notify_env["notify"]("bad\ud800title", "5:00")
+        msg = _decode_msg(notify_env["_ps_calls"][0])
+        assert msg == "Your timer 'badtitle' has finished."
+
+    def test_surrogate_only_title_falls_back_to_duration(self, notify_env):
+        notify_env["notify"]("\ud800\udfff", "5:00")
+        assert _decode_msg(notify_env["_ps_calls"][0]) == "Your 5:00 timer has finished."
+
+    def test_noncharacter_title_message_is_valid_utf8_base64(self, notify_env):
+        notify_env["notify"]("a\uffffb\ufffe", "5:00")
+        script = notify_env["_ps_calls"][0]
+        b64 = re.search(r'\$MsgB64 = "([^"]*)"', script).group(1)
+        assert base64.b64decode(b64, validate=True).decode("utf-8") == "Your timer 'ab' has finished."
+
+
+class TestRunToastScriptEnvironment:
+    @pytest.fixture()
+    def run(self, monkeypatch):
+        seen = {}
+
+        class _FakeSI:
+            dwFlags = 0
+
+        monkeypatch.setattr(subprocess, "STARTUPINFO", _FakeSI, raising=False)
+        monkeypatch.setattr(subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
+        monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: seen.update(cmd=cmd))
+        match = re.search(r"(^def _run_toast_script\(script\):.*?)(?=^def notify)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        ns = {"os": os, "subprocess": subprocess}
+        exec(match.group(1), ns)
+
+        def _go(script="echo hi"):
+            ns["_run_toast_script"](script)
+            return seen["cmd"]
+        return _go
+
+    @staticmethod
+    def _ps_path(root):
+        return os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+
+    def test_valid_systemroot_is_used(self, run, monkeypatch, tmp_path):
+        monkeypatch.setenv("SystemRoot", str(tmp_path))
+        assert run()[0] == self._ps_path(str(tmp_path))
+
+    def test_missing_systemroot_falls_back_to_c_windows(self, run, monkeypatch):
+        monkeypatch.delenv("SystemRoot", raising=False)
+        assert run()[0] == self._ps_path(r"C:\Windows")
+
+    def test_empty_systemroot_falls_back_to_c_windows(self, run, monkeypatch):
+        monkeypatch.setenv("SystemRoot", "")
+        assert run()[0] == self._ps_path(r"C:\Windows")
+
+    def test_relative_systemroot_falls_back_to_c_windows(self, run, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "evil").mkdir()
+        monkeypatch.setenv("SystemRoot", "evil")  # exists, but relative
+        assert run()[0] == self._ps_path(r"C:\Windows")
+
+    def test_nonexistent_systemroot_falls_back_to_c_windows(self, run, monkeypatch, tmp_path):
+        monkeypatch.setenv("SystemRoot", str(tmp_path / "does_not_exist"))
+        assert run()[0] == self._ps_path(r"C:\Windows")
+
+    def test_systemroot_pointing_at_file_falls_back_to_c_windows(self, run, monkeypatch, tmp_path):
+        f = tmp_path / "afile"
+        f.write_text("x")
+        monkeypatch.setenv("SystemRoot", str(f))
+        assert run()[0] == self._ps_path(r"C:\Windows")
+
+    def test_command_has_noprofile_and_no_execution_policy_bypass(self, run, monkeypatch):
+        monkeypatch.setenv("SystemRoot", r"C:\Windows")
+        cmd = run("echo hi")
+        assert "-NoProfile" in cmd
+        assert "-ExecutionPolicy" not in cmd
+        assert not any("bypass" in str(a).lower() for a in cmd)
+        assert cmd[-2:] == ["-Command", "echo hi"]

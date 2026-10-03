@@ -959,3 +959,121 @@ class TestFmt:
 
     def test_thirty_two_day_max_boundary(self, fmt_fn):
         assert fmt_fn(32 * 86400 - 1) == "31d 23:59:59"
+
+
+class TestLoadSettingsStrictBooleans:
+    """pinned/muted are honoured only as real JSON booleans; anything else
+    (strings, ints, null) falls back to the default False."""
+
+    @pytest.mark.parametrize("key", ["pinned", "muted"])
+    @pytest.mark.parametrize("bad", ["false", "true", "yes", 1, 0, 2, None, [], {}])
+    def test_non_boolean_value_falls_back_to_false(self, load, key, bad):
+        fn, f = load
+        f.write_text(json.dumps({key: bad}))
+        assert fn()[key] is False
+
+    @pytest.mark.parametrize("key", ["pinned", "muted"])
+    def test_real_true_is_honoured(self, load, key):
+        fn, f = load
+        f.write_text(json.dumps({key: True}))
+        assert fn()[key] is True
+
+    @pytest.mark.parametrize("key", ["pinned", "muted"])
+    def test_real_false_is_honoured(self, load, key):
+        fn, f = load
+        f.write_text(json.dumps({key: False}))
+        assert fn()[key] is False
+
+    def test_missing_pinned_and_muted_default_to_false(self, load):
+        fn, f = load
+        f.write_text(json.dumps({}))
+        r = fn()
+        assert r["pinned"] is False and r["muted"] is False
+
+    def test_bad_pinned_does_not_discard_valid_muted(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"pinned": "true", "muted": True}))
+        r = fn()
+        assert r["pinned"] is False and r["muted"] is True
+
+
+class TestLoadSettingsLegacyNotificationsStrict:
+    """Legacy global "notifications" key enables the per-timer notify default
+    only when it is the literal JSON true."""
+
+    def _notify_of_first_timer(self, load, value):
+        fn, f = load
+        f.write_text(json.dumps({"notifications": value, "timers": [{"title": "a"}]}))
+        return fn()["timers"][0]["notify"]
+
+    def test_literal_true_enables_legacy_notify_default(self, load):
+        assert self._notify_of_first_timer(load, True) is True
+
+    @pytest.mark.parametrize("value", [False, "false", "true", 1, 0, None])
+    def test_non_true_value_does_not_enable_legacy_notify(self, load, value):
+        assert self._notify_of_first_timer(load, value) is False
+
+    def test_absent_key_leaves_notify_off(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"timers": [{"title": "a"}]}))
+        assert fn()["timers"][0]["notify"] is False
+
+    def test_string_false_does_not_enable_notify_in_legacy_titles_path(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"notifications": "false", "titles": ["a"]}))
+        assert fn()["timers"][0]["notify"] is False
+
+    def test_explicit_per_timer_notify_beats_legacy_key(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"notifications": True,
+                                 "timers": [{"title": "a", "notify": False}]}))
+        assert fn()["timers"][0]["notify"] is False
+
+
+_ISO_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}) (.*)$")
+
+
+class TestLogErrorFormat:
+    def test_line_starts_with_iso_timestamp_then_space_then_message(self, ns):
+        namespace, f = ns
+        namespace["_log_error"]("boom happened")
+        lines = f.with_name("error.log").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+        m = _ISO_LINE.match(lines[0])
+        assert m, f"bad log line: {lines[0]!r}"
+        assert m.group(2) == "boom happened"
+
+    def test_timestamp_is_parseable_and_recent(self, ns):
+        from datetime import datetime, timedelta
+        namespace, f = ns
+        before = datetime.now().replace(microsecond=0)
+        namespace["_log_error"]("x")
+        line = f.with_name("error.log").read_text(encoding="utf-8").splitlines()[0]
+        stamp = datetime.fromisoformat(_ISO_LINE.match(line).group(1))
+        assert before <= stamp <= datetime.now() + timedelta(seconds=1)
+
+    def test_multiple_calls_append_in_order(self, ns):
+        namespace, f = ns
+        for msg in ("first", "second", "third"):
+            namespace["_log_error"](msg)
+        lines = f.with_name("error.log").read_text(encoding="utf-8").splitlines()
+        assert [_ISO_LINE.match(l).group(2) for l in lines] == ["first", "second", "third"]
+
+    def test_empty_message_still_logs_timestamped_line(self, ns):
+        namespace, f = ns
+        namespace["_log_error"]("")
+        line = f.with_name("error.log").read_text(encoding="utf-8").splitlines()[0]
+        assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} $", line)
+
+    def test_unwritable_log_location_does_not_raise(self, tmp_path):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("i am a file, not a directory")
+        namespace = _make_namespace(str(blocker / "settings.json"))
+        namespace["_log_error"]("cannot be written")  # must not raise
+        assert blocker.read_text() == "i am a file, not a directory"
+
+    def test_log_failure_during_write_does_not_raise(self, ns):
+        namespace, f = ns
+        with mock.patch("builtins.open", side_effect=PermissionError("denied")):
+            namespace["_log_error"]("denied write")  # must not raise
+        assert not f.with_name("error.log").exists()
