@@ -75,6 +75,7 @@ def _build_namespace(root, timers_frame, timers):
     fmt_src = _extract(r"(^def fmt\(seconds\):.*?)(?=^\n)")
     parse_src = _extract(r"(^def parse_input\(text\):.*?)(?=^_FLASH_COLORS)")
     flash_src = _extract(r"(^_FLASH_COLORS = .*?)$")
+    max_title_src = _extract(r"(^MAX_TITLE_LEN = \d+)$")
     btnw_src = _extract(r"(^BTN_W = \d+)$")
     timerw_src = _extract(r"(^TIMER_W = \d+)$")
     timerh_src = _extract(r"(^TIMER_H = \d+)$")
@@ -84,17 +85,15 @@ def _build_namespace(root, timers_frame, timers):
     pack_timer_src = _extract(r"(^def _pack_timer\(tw\):.*?)(?=^def add_timer)")
     add_timer_src = _extract(r"(^def add_timer\(.*?)(?=^def remove_timer)")
     remove_timer_src = _extract(r"(^def remove_timer\(tw\):.*?)(?=^def _fit_window\b)")
-    fit_window_src = _extract(r"(^def _fit_window\(preserve=False, width=None\):.*?)(?=^def _fit_window_row)")
-    fit_row_src = _extract(r"(^def _fit_window_row\(\):.*?)(?=^def _fit_window_any)")
-    fit_any_src = _extract(r"(^def _fit_window_any\(preserve=False, width=None\):.*?)(?=^\n# ── Layout mode toggle)")
+    fit_window_src = _extract(r"(^def _fit_window\(\):.*?)(?=^\n# ── Layout mode toggle)")
     relayout_src = _extract(r"(^def _relayout_timers\(\):.*?)(?=^def _toggle_layout_mode)")
     toggle_src = _extract(r"(^def _toggle_layout_mode\(\):.*?)(?=^\n# ── Add timer tile)")
     set_sound_enabled_src = _extract(r"(^def _set_sound_controls_enabled\(tw, enabled\):.*?)(?=^def toggle_mute)")
     toggle_mute_src = _extract(r"(^def toggle_mute\(\):.*?)(?=^def _update_mute_btn)")
 
-    for src in (timerw_src, timerh_src, btnw_src, flash_src, fmt_src, parse_src,
+    for src in (max_title_src, timerw_src, timerh_src, btnw_src, flash_src, fmt_src, parse_src,
                 make_tip_src, timerwidget_src, make_sep_src, pack_timer_src,
-                fit_window_src, fit_row_src, fit_any_src, relayout_src, toggle_src,
+                fit_window_src, relayout_src, toggle_src,
                 set_sound_enabled_src, toggle_mute_src, add_timer_src, remove_timer_src):
         exec(src, ns)
 
@@ -266,6 +265,40 @@ class TestSeparatorOrientation:
 
 
 # ---------------------------------------------------------------------------
+# Title entry length cap (A5) — a StringVar trace on the real entry widget,
+# so typed and pasted text are both capped at MAX_TITLE_LEN.
+# ---------------------------------------------------------------------------
+
+class TestTitleEntryLimit:
+    def test_pasted_overlong_title_is_cut_to_max(self, env):
+        tw = _add_timer(env)
+        tw.title_entry.delete(0, "end")
+        tw.title_entry.insert(0, "x" * 250)  # an insert is what a paste does
+        assert len(tw.title_entry.get()) == env["MAX_TITLE_LEN"] == 100
+
+    def test_typing_past_the_cap_adds_nothing(self, env):
+        tw = _add_timer(env)
+        tw.title_entry.delete(0, "end")
+        tw.title_entry.insert(0, "y" * 100)
+        tw.title_entry.insert("end", "z")  # one more keystroke
+        assert tw.title_entry.get() == "y" * 100
+
+    def test_title_at_exactly_the_cap_is_kept_whole(self, env):
+        tw = _add_timer(env)
+        tw.title_entry.delete(0, "end")
+        tw.title_entry.insert(0, "a" * 100)
+        assert tw.title_entry.get() == "a" * 100
+
+    def test_short_title_untouched(self, env):
+        tw = _add_timer(env, initial_title="Bread")
+        assert tw.title_entry.get() == "Bread"
+
+    def test_placeholder_still_shown_for_untitled_timer(self, env):
+        tw = _add_timer(env)
+        assert tw.title_entry.get() == env["_TITLE_PLACEHOLDER"]
+
+
+# ---------------------------------------------------------------------------
 # Window fitting
 # ---------------------------------------------------------------------------
 
@@ -274,7 +307,7 @@ class TestFitWindowRow:
         env["_layout_mode"] = "row"
         _add_timer(env)
         _add_timer(env)
-        env["_fit_window_row"]()
+        env["_fit_window"]()
         root = env["root"]
         root.update()
         assert root.wm_minsize() == root.wm_maxsize()
@@ -282,12 +315,12 @@ class TestFitWindowRow:
     def test_width_grows_with_more_timers(self, env):
         env["_layout_mode"] = "row"
         _add_timer(env)
-        env["_fit_window_row"]()
+        env["_fit_window"]()
         env["root"].update()
         w1 = env["root"].winfo_width()
 
         _add_timer(env)
-        env["_fit_window_row"]()
+        env["_fit_window"]()
         env["root"].update()
         w2 = env["root"].winfo_width()
 
@@ -300,7 +333,7 @@ class TestFitWindowRow:
         env["_layout_mode"] = "row"
         for _ in range(3):
             _add_timer(env)
-        env["_fit_window_row"]()
+        env["_fit_window"]()
         env["root"].update()
         # width should fit all 3 boxes, not just one
         assert env["root"].winfo_width() >= env["TIMER_W"] * 3
@@ -715,11 +748,15 @@ def _build_save_settings_namespace(ns, settings_path):
         r"(^def _save_settings\(\):.*?)(?=^\n_s = _load_settings)",
         SOURCE, re.DOTALL | re.MULTILINE,
     ).group(1)
+    # Helpers _save_settings calls: title cap, size caps and the error logger
+    # (they sit together between the settings constants and the backup helper).
+    helpers_src = _extract(r"(^MAX_TITLE_LEN = .*?)(?=^def _backup_corrupt_settings)")
     ns["_SETTINGS_PATH"] = str(settings_path)
     ns["topmost_var"] = ctk.BooleanVar(value=False)
     ns["json"] = __import__("json")
     ns["os"] = __import__("os")
     ns["sys"] = __import__("sys")
+    exec(helpers_src, ns)
     exec(save_src, ns)
     return ns
 
@@ -765,6 +802,37 @@ class TestSaveSettings:
 
         data = json.loads((tmp_path / "settings.json").read_text())
         assert data["timers"][0]["title"] == ""
+
+    def test_overlong_title_is_clipped_to_max_title_len_on_save(self, env, tmp_path):
+        _build_save_settings_namespace(env, tmp_path / "settings.json")
+        _add_timer(env, initial_title="x" * 250)
+
+        env["_save_settings"]()
+
+        data = json.loads((tmp_path / "settings.json").read_text())
+        assert len(data["timers"][0]["title"]) == env["MAX_TITLE_LEN"] == 100
+
+    def test_save_is_skipped_while_writes_are_blocked(self, env, tmp_path):
+        # A2: settings.json couldn't be read or backed up at load, so saving
+        # must not touch it (the original may be valid behind a lock).
+        settings = tmp_path / "settings.json"
+        settings.write_text("original")
+        _build_save_settings_namespace(env, settings)
+        env["_settings_write_blocked"] = True
+
+        env["_save_settings"]()
+
+        assert settings.read_text() == "original"
+        assert not (tmp_path / "settings.json.tmp").exists()
+
+    def test_save_still_writes_when_not_blocked(self, env, tmp_path):
+        settings = tmp_path / "settings.json"
+        _build_save_settings_namespace(env, settings)
+        assert env["_settings_write_blocked"] is False
+
+        env["_save_settings"]()
+
+        assert settings.exists()
 
     def test_write_is_atomic_no_leftover_tmp_file(self, env, tmp_path):
         _build_save_settings_namespace(env, tmp_path / "settings.json")
