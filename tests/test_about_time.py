@@ -1077,3 +1077,102 @@ class TestLogErrorFormat:
         with mock.patch("builtins.open", side_effect=PermissionError("denied")):
             namespace["_log_error"]("denied write")  # must not raise
         assert not f.with_name("error.log").exists()
+
+
+# ---------------------------------------------------------------------------
+# parse_input: oversized input (A4) — int() raises ValueError past ~4300
+# digits, which used to escape parse_input and leave the UI stuck.
+# ---------------------------------------------------------------------------
+
+class TestParseInputOversized:
+    @pytest.mark.parametrize("text", [
+        "9" * 5000,              # bare minutes branch
+        "9" * 5000 + "d 1:00:00",  # day-prefix branch
+        "1:" + "9" * 5000,       # colon branch
+        "1h" + "9" * 5000 + "m",  # mixed-unit branch
+    ])
+    def test_thousands_of_digits_returns_none_not_raise(self, parse, text):
+        assert parse(text) is None
+
+    def test_over_40_chars_rejected_even_if_otherwise_valid(self, parse):
+        assert parse("0" * 41 + "5") is None  # "5" minutes, padded past the cap
+
+    def test_exactly_40_chars_still_parsed(self, parse):
+        assert parse("0" * 38 + "10") == 10 * 60
+
+    def test_longest_realistic_inputs_still_parse(self, parse):
+        assert parse("29d 23:59:59") == 29 * 86400 + 23 * 3600 + 59 * 60 + 59
+        assert parse("1d 2h 15m 30s") == 86400 + 2 * 3600 + 15 * 60 + 30
+
+
+# ---------------------------------------------------------------------------
+# A2: a read failure (lock) must not be treated as a corrupt file, and a
+# failed backup must block saving instead of letting the next save overwrite
+# the original.
+# ---------------------------------------------------------------------------
+
+def _locked_open(settings_file, exc):
+    """builtins.open replacement that fails only for the settings file."""
+    real_open = open
+    def fake(path, *a, **k):
+        if str(path) == str(settings_file):
+            raise exc
+        return real_open(path, *a, **k)
+    return fake
+
+
+class TestLoadSettingsReadFailureKeepsFile:
+    def test_locked_file_is_left_in_place_untouched(self, ns):
+        namespace, f = ns
+        content = json.dumps({"timers": [{"title": "keep me", "duration": 600}]})
+        f.write_text(content)
+        with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))):
+            result = namespace["_load_settings"]()
+        assert result["timers"] == []                         # defaults returned
+        assert f.read_text() == content                       # original untouched
+        assert not f.with_name("settings.json.bak").exists()  # not moved aside
+
+    def test_locked_file_blocks_saving_and_is_logged(self, ns):
+        namespace, f = ns
+        f.write_text(json.dumps({"timers": []}))
+        with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))):
+            namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is True
+        assert "could not read settings" in f.with_name("error.log").read_text()
+
+    def test_stat_failure_is_not_mistaken_for_missing_file(self, ns):
+        namespace, f = ns
+        f.write_text(json.dumps({"timers": []}))
+        with mock.patch("os.path.getsize", side_effect=PermissionError("locked")):
+            namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is True
+        assert f.exists()
+
+    def test_missing_file_does_not_block_saving(self, ns):
+        namespace, f = ns
+        namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is False
+
+    def test_corrupt_file_backed_up_does_not_block_saving(self, ns):
+        namespace, f = ns
+        f.write_text("{not json")
+        namespace["_load_settings"]()
+        assert f.with_name("settings.json.bak").exists()
+        assert namespace["_settings_write_blocked"] is False
+
+    def test_failed_backup_blocks_saving_and_keeps_original(self, ns):
+        namespace, f = ns
+        f.write_text("{not json")
+        with mock.patch("os.replace", side_effect=PermissionError("locked")):
+            namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is True
+        assert f.read_text() == "{not json"                   # original still there
+        assert "could not back up" in f.with_name("error.log").read_text()
+
+    def test_backup_helper_returns_true_on_success_false_on_failure(self, ns):
+        namespace, f = ns
+        f.write_text("x")
+        assert namespace["_backup_corrupt_settings"]() is True
+        f.write_text("y")
+        with mock.patch("os.replace", side_effect=OSError("nope")):
+            assert namespace["_backup_corrupt_settings"]() is False

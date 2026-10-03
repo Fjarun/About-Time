@@ -16,6 +16,7 @@ import base64
 import os
 import re
 import subprocess
+import sys
 import types
 from pathlib import Path
 
@@ -303,3 +304,60 @@ class TestRunToastScriptEnvironment:
         assert "-ExecutionPolicy" not in cmd
         assert not any("bypass" in str(a).lower() for a in cmd)
         assert cmd[-2:] == ["-Command", "echo hi"]
+
+
+class TestToastFailureLogged:
+    """A3: notify() sends on a background thread, where an exception used to
+    vanish silently. A failed send must reach _log_error and never raise."""
+
+    def test_failed_send_is_logged_not_raised(self, notify_env):
+        logged = []
+
+        def boom(script):
+            raise OSError("powershell missing")
+
+        notify_env["_run_toast_script"] = boom
+        notify_env["_log_error"] = logged.append
+        notify_env["notify"]("Laundry", "25:00")  # must not raise
+        assert len(logged) == 1
+        assert logged[0].startswith("toast failed:")
+        assert "powershell missing" in logged[0]
+
+    def test_successful_send_logs_nothing(self, notify_env):
+        logged = []
+        notify_env["_log_error"] = logged.append
+        notify_env["notify"]("Laundry", "25:00")
+        assert logged == []
+        assert len(notify_env["_ps_calls"]) == 1
+
+
+class TestLogTkException:
+    """A3: Tk callback exceptions are routed to _log_error on a single line."""
+
+    @pytest.fixture()
+    def handler(self):
+        import traceback
+        logged = []
+        match = re.search(r"(^def _log_tk_exception\(.*?)(?=^def _backup_corrupt_settings)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        assert match, "_log_tk_exception not found in source"
+        ns = {"traceback": traceback, "_log_error": logged.append}
+        exec(match.group(1), ns)
+        return ns["_log_tk_exception"], logged
+
+    def test_exception_is_logged_on_one_line_with_type_and_message(self, handler):
+        fn, logged = handler
+        try:
+            raise ValueError("bad countdown")
+        except ValueError:
+            fn(*sys.exc_info())
+        assert len(logged) == 1
+        line = logged[0]
+        assert line.startswith("Tk callback exception:")
+        assert "ValueError: bad countdown" in line
+        assert "\n" not in line
+
+    def test_handler_is_installed_on_the_root_window(self):
+        # The window is created at import time, so it can't be exercised
+        # headless; this only guards against the wiring line being deleted.
+        assert "root.report_callback_exception = _log_tk_exception" in SOURCE

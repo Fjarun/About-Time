@@ -6,8 +6,9 @@ import json
 import os
 import base64
 import subprocess
+import traceback
 
-__version__ = "0.11.3"
+__version__ = "0.11.4"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -167,6 +168,12 @@ MAX_TITLE_LEN = 100
 _MAX_SETTINGS_BYTES = 256 * 1024
 _MAX_LOG_BYTES = 256 * 1024
 
+# Set when the settings file could not be read, or an unreadable one could not
+# be moved aside. While set, _save_settings leaves the file alone so a valid
+# file behind a temporary lock (Proton Drive, antivirus) is never overwritten
+# with defaults. Lasts for the session.
+_settings_write_blocked = False
+
 def _log_error(message):
     """stderr is invisible in the windowed exe, so errors also go to a small
     log next to settings.json. Capped: past _MAX_LOG_BYTES the old log is
@@ -186,21 +193,36 @@ def _log_error(message):
 def _clip_title(title):
     return title[:MAX_TITLE_LEN]
 
+def _log_tk_exception(exc_type, exc_value, exc_tb):
+    """Tk swallows exceptions raised inside callbacks and only prints them to
+    stderr, invisible in the windowed exe. Installed as
+    root.report_callback_exception so they land in error.log on one line."""
+    detail = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+    _log_error("Tk callback exception: " + " | ".join(l.strip() for l in detail.splitlines() if l.strip()))
+
 def _backup_corrupt_settings():
     """Keeps the unreadable settings file as settings.json.bak (replacing any
-    older .bak) so the next save doesn't silently destroy it."""
+    older .bak) so the next save doesn't silently destroy it. Returns True if
+    the file was moved aside; on failure logs it and returns False."""
     try:
         os.replace(_SETTINGS_PATH, _SETTINGS_PATH + ".bak")
-    except OSError:
-        pass
+        return True
+    except OSError as e:
+        _log_error(f"could not back up unreadable settings file: {e}")
+        return False
 
 def _load_settings():
+    global _settings_write_blocked
     defaults = {"pinned": False, "layout_mode": "stack", "muted": False,
                 "window_x": None, "window_y": None, "timers": []}
     try:
-        if not os.path.exists(_SETTINGS_PATH):
+        # Only a genuinely missing file means "first run". Any other stat
+        # failure (e.g. a lock) is an OSError handled below, not "no file".
+        try:
+            size = os.path.getsize(_SETTINGS_PATH)
+        except FileNotFoundError:
             return defaults
-        if os.path.getsize(_SETTINGS_PATH) > _MAX_SETTINGS_BYTES:
+        if size > _MAX_SETTINGS_BYTES:
             raise ValueError(f"settings file larger than {_MAX_SETTINGS_BYTES} bytes")
         with open(_SETTINGS_PATH) as f:
             data = json.load(f)
@@ -277,12 +299,21 @@ def _load_settings():
             "window_y":      win_y,
             "timers":        timer_data,
         }
+    except OSError as e:
+        # Could not read the file at all (lock, permissions, I/O). It may be
+        # perfectly valid, so don't move it and don't save over it this session.
+        _log_error(f"_load_settings could not read settings, leaving the file untouched and not saving this session: {e}")
+        _settings_write_blocked = True
+        return defaults
     except Exception as e:
         _log_error(f"_load_settings failed: {e}")
-        _backup_corrupt_settings()
+        if not _backup_corrupt_settings():
+            _settings_write_blocked = True
         return defaults
 
 def _save_settings():
+    if _settings_write_blocked:
+        return  # reason already logged by _load_settings
     tmp = _SETTINGS_PATH + ".tmp"
     try:
         os.makedirs(os.path.dirname(_SETTINGS_PATH), exist_ok=True)
@@ -372,15 +403,20 @@ def notify(title, duration):
     msg_b64 = base64.b64encode(msg.encode("utf-8")).decode("ascii")
 
     def _send():
-        toast = Notification(app_id="About Time", title="Timer finished", msg="$Msg")
-        toast.actions = ""
-        toast.audio = '<audio silent="true" />'
-        script = (
-            f'$MsgB64 = "{msg_b64}"\n'
-            "$Msg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($MsgB64))\n"
-            + _TOAST_TEMPLATE.format(**toast.__dict__)
-        )
-        _run_toast_script(script)
+        try:
+            toast = Notification(app_id="About Time", title="Timer finished", msg="$Msg")
+            toast.actions = ""
+            toast.audio = '<audio silent="true" />'
+            script = (
+                f'$MsgB64 = "{msg_b64}"\n'
+                "$Msg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($MsgB64))\n"
+                + _TOAST_TEMPLATE.format(**toast.__dict__)
+            )
+            _run_toast_script(script)
+        except Exception as exc:
+            # Runs on a daemon thread, where an exception would otherwise
+            # vanish silently and the user just never sees the toast.
+            _log_error(f"toast failed: {exc!r}")
     threading.Thread(target=_send, daemon=True).start()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -405,6 +441,11 @@ def fmt(seconds):
 def parse_input(text):
     text = text.strip()
     if not text:
+        return None
+    # A thousands-of-digits string makes int() raise ValueError (Python's
+    # int-string limit) deep in the branches below; reject it up front.
+    # 40 chars is generous: the longest real input ("1d 2h 15m 30s") is ~14.
+    if len(text) > 40:
         return None
     day_match = re.match(r"^(\d+)d\s+(\d{1,2}):(\d{2}):(\d{2})$", text, re.IGNORECASE)
     if day_match:
@@ -543,8 +584,12 @@ class TimerWidget(ctk.CTkFrame):
             del_btn.bind("<Enter>", lambda e: (del_tip.place(relx=1.0, anchor="ne", x=-34, y=7), del_tip.lift()))
             del_btn.bind("<Leave>", lambda e: del_tip.place_forget())
 
+        # A StringVar trace (not a key binding) so pasted text is capped too.
+        self.title_var = ctk.StringVar()
+        self.title_var.trace_add("write", self._clip_title_var)
         self.title_entry = ctk.CTkEntry(
             self,
+            textvariable=self.title_var,
             border_width=0,
             fg_color="transparent",
             font=ctk.CTkFont(size=16),
@@ -660,6 +705,11 @@ class TimerWidget(ctk.CTkFrame):
         self.notify_btn.configure(fg_color=("#1F6AA5", "#1F6AA5") if self.notify_enabled else "transparent")
 
     # ── Title placeholder ──────────────────────────────────────────────────────
+    def _clip_title_var(self, *_):
+        value = self.title_var.get()
+        if len(value) > MAX_TITLE_LEN:
+            self.title_var.set(value[:MAX_TITLE_LEN])
+
     def _title_focus_in(self, event=None):
         if self.title_entry.get() == _TITLE_PLACEHOLDER:
             self.title_entry.delete(0, "end")
@@ -804,6 +854,7 @@ class TimerWidget(ctk.CTkFrame):
 # ── Root window ────────────────────────────────────────────────────────────────
 ctk.set_appearance_mode("dark")
 root = ctk.CTk()
+root.report_callback_exception = _log_tk_exception
 root.title("About Time")
 _base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 root.iconbitmap(os.path.join(_base, "Assets", "icon.ico"))
