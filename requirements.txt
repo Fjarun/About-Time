@@ -3,3 +3,10 @@
 customtkinter==5.2.2
 winotify==1.1.0
 pycaw==20251023
+
+# Their dependencies, pinned to the versions installed for that build, so a rebuild matches it exactly.
+comtypes==1.4.16
+psutil==7.2.1
+darkdetect==0.8.0
+packaging==26.0
+typing_extensions==4.15.0

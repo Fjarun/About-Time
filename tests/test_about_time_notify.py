@@ -400,7 +400,12 @@ class TestLogErrorFlattensNewlines:
 # ---------------------------------------------------------------------------
 
 def _powershell_exe():
-    root = os.environ.get("SystemRoot", r"C:\Windows")
+    # Same lookup as the app (the OS's own answer, not the SystemRoot env var), so
+    # these injection tests run against the PowerShell the app really launches.
+    import ctypes
+    buf = ctypes.create_unicode_buffer(260)
+    n = ctypes.windll.kernel32.GetSystemWindowsDirectoryW(buf, 260) if sys.platform == "win32" else 0
+    root = buf.value if 0 < n < 260 else r"C:\Windows"
     return os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 
 

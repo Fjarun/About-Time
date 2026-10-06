@@ -111,13 +111,14 @@ exec(compile(src, sys.argv[1], "exec"), {"__name__": "__main__", "__file__": sys
 
 
 def _run(mode):
-    appdata = tempfile.mkdtemp(prefix="at_tips_")
-    os.makedirs(os.path.join(appdata, "About Time"))
-    with open(os.path.join(appdata, "About Time", "settings.json"), "w") as f:
-        json.dump({"layout_mode": mode}, f)
-    env = dict(os.environ, APPDATA=appdata, PYTHONUSERBASE=site.getuserbase())
-    proc = subprocess.run([sys.executable, "-c", _RUNNER, str(SRC_PATH), _DUMP],
-                          capture_output=True, text=True, timeout=180, env=env)
+    with tempfile.TemporaryDirectory(prefix="at_tips_", ignore_cleanup_errors=True) as appdata:
+
+        os.makedirs(os.path.join(appdata, "About Time"))
+        with open(os.path.join(appdata, "About Time", "settings.json"), "w") as f:
+            json.dump({"layout_mode": mode}, f)
+        env = dict(os.environ, APPDATA=appdata, PYTHONUSERBASE=site.getuserbase())
+        proc = subprocess.run([sys.executable, "-c", _RUNNER, str(SRC_PATH), _DUMP],
+                              capture_output=True, text=True, timeout=180, env=env)
     for line in proc.stdout.splitlines():
         if line.startswith("TIPS "):
             return json.loads(line[len("TIPS "):])
