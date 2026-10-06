@@ -260,42 +260,50 @@ class TestRunToastScriptEnvironment:
         ns = {"os": os, "subprocess": subprocess}
         exec(match.group(1), ns)
 
-        def _go(script="echo hi"):
+        def _go(script="echo hi", windows_dir=None):
+            if windows_dir is not None:
+                ns["_system_windows_dir"] = lambda: windows_dir
             ns["_run_toast_script"](script)
             return seen["cmd"]
+        _go.ns = ns
         return _go
 
     @staticmethod
     def _ps_path(root):
         return os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
 
-    def test_valid_systemroot_is_used(self, run, monkeypatch, tmp_path):
+    def test_os_reported_windows_dir_is_used(self, run, tmp_path):
+        assert run(windows_dir=str(tmp_path))[0] == self._ps_path(str(tmp_path))
+
+    def test_systemroot_env_var_is_ignored(self, run, monkeypatch, tmp_path):
+        """A11: a same-user env change must not redirect the PowerShell path."""
         monkeypatch.setenv("SystemRoot", str(tmp_path))
-        assert run()[0] == self._ps_path(str(tmp_path))
+        cmd = run()
+        assert cmd[0] != self._ps_path(str(tmp_path))
+        assert cmd[0] == self._ps_path(run.ns["_system_windows_dir"]() or r"C:\Windows")
 
-    def test_missing_systemroot_falls_back_to_c_windows(self, run, monkeypatch):
-        monkeypatch.delenv("SystemRoot", raising=False)
-        assert run()[0] == self._ps_path(r"C:\Windows")
+    def test_real_os_call_returns_an_existing_directory(self, run):
+        d = run.ns["_system_windows_dir"]()
+        assert os.path.isabs(d) and os.path.isdir(d)
 
-    def test_empty_systemroot_falls_back_to_c_windows(self, run, monkeypatch):
-        monkeypatch.setenv("SystemRoot", "")
-        assert run()[0] == self._ps_path(r"C:\Windows")
-
-    def test_relative_systemroot_falls_back_to_c_windows(self, run, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("bad", ["", "evil"])
+    def test_empty_or_relative_dir_falls_back_to_c_windows(self, run, monkeypatch, tmp_path, bad):
         monkeypatch.chdir(tmp_path)
         (tmp_path / "evil").mkdir()
-        monkeypatch.setenv("SystemRoot", "evil")  # exists, but relative
-        assert run()[0] == self._ps_path(r"C:\Windows")
+        assert run(windows_dir=bad)[0] == self._ps_path(r"C:\Windows")
 
-    def test_nonexistent_systemroot_falls_back_to_c_windows(self, run, monkeypatch, tmp_path):
-        monkeypatch.setenv("SystemRoot", str(tmp_path / "does_not_exist"))
-        assert run()[0] == self._ps_path(r"C:\Windows")
+    def test_nonexistent_dir_falls_back_to_c_windows(self, run, tmp_path):
+        assert run(windows_dir=str(tmp_path / "does_not_exist"))[0] == self._ps_path(r"C:\Windows")
 
-    def test_systemroot_pointing_at_file_falls_back_to_c_windows(self, run, monkeypatch, tmp_path):
+    def test_dir_pointing_at_file_falls_back_to_c_windows(self, run, tmp_path):
         f = tmp_path / "afile"
         f.write_text("x")
-        monkeypatch.setenv("SystemRoot", str(f))
-        assert run()[0] == self._ps_path(r"C:\Windows")
+        assert run(windows_dir=str(f))[0] == self._ps_path(r"C:\Windows")
+
+    def test_api_failure_returns_empty_string(self, run, monkeypatch):
+        import ctypes
+        monkeypatch.setattr(ctypes, "windll", None, raising=False)
+        assert run.ns["_system_windows_dir"]() == ""
 
     def test_command_has_noprofile_and_no_execution_policy_bypass(self, run, monkeypatch):
         monkeypatch.setenv("SystemRoot", r"C:\Windows")
@@ -361,3 +369,83 @@ class TestLogTkException:
         # The window is created at import time, so it can't be exercised
         # headless; this only guards against the wiring line being deleted.
         assert "root.report_callback_exception = _log_tk_exception" in SOURCE
+
+
+class TestLogErrorFlattensNewlines:
+    """A10 (CWE-117): a multi-line message must not fake extra error.log lines."""
+
+    def test_multiline_message_is_one_log_line(self, tmp_path, monkeypatch):
+        match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        ns = {"os": os, "sys": sys, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        exec(match.group(1), ns)
+        ns["_log_error"]("real line\n2026-01-01T00:00:00 FAKE entry\r\nthird")
+        lines = (tmp_path / "error.log").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+        assert "FAKE entry" in lines[0] and "real line" in lines[0]
+
+    def test_single_line_message_unchanged(self, tmp_path):
+        match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        ns = {"os": os, "sys": sys, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        exec(match.group(1), ns)
+        ns["_log_error"]("plain")
+        assert (tmp_path / "error.log").read_text(encoding="utf-8").strip().endswith("plain")
+
+
+# ---------------------------------------------------------------------------
+# B2: the tests above only inspect the generated script text. These run it in
+# real PowerShell, where the actual injection (a title's "$(...)" being
+# expanded inside winotify's @"..."@ here-string) would happen.
+# ---------------------------------------------------------------------------
+
+def _powershell_exe():
+    root = os.environ.get("SystemRoot", r"C:\Windows")
+    return os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+
+
+_real_powershell = pytest.mark.skipif(
+    sys.platform != "win32" or not os.path.exists(_powershell_exe()),
+    reason="needs real Windows PowerShell",
+)
+
+
+def _run_powershell(script, cwd):
+    return subprocess.run(
+        [_powershell_exe(), "-NoProfile", "-Command", script],
+        cwd=cwd, capture_output=True, text=True, timeout=60,
+    )
+
+
+@_real_powershell
+class TestRealPowerShellInjection:
+    MARKER = "pwned.txt"  # relative: PowerShell runs with cwd=tmp_path, titles cap at 50 chars
+
+    def test_control_detector_sees_a_vulnerable_script_execute(self, tmp_path):
+        """Proves this harness can fail: a here-string that embeds the payload
+        literally (the original bug) DOES create the marker."""
+        script = f'$Template = @"\n<text>$(New-Item {self.MARKER})</text>\n"@\n$Template'
+        _run_powershell(script, tmp_path)
+        assert (tmp_path / self.MARKER).exists()
+
+    @pytest.mark.parametrize("payload", [
+        "$(New-Item pwned.txt)",
+        "Hi $(New-Item pwned.txt) there",  # subexpression buried mid-sentence
+        # newline + a line-leading "@ would close the here-string if it were literal
+        'a\n"@\nNew-Item pwned.txt\n$x=@"\nb',
+    ])
+    def test_payload_in_title_never_executes(self, notify_env, tmp_path, payload):
+        notify_env["notify"](payload, "5:00")
+        script = notify_env["_ps_calls"][0]
+        # Everything up to (not including) the toast-showing half: the Base64
+        # decode and the real winotify template's @"..."@ here-string, which is
+        # where an injected "$(...)" would execute. No toast is shown.
+        head, sep, _ = script.partition("$SerializedXml = New-Object")
+        assert sep, "toast template layout changed; update this split"
+
+        result = _run_powershell(head + "\n$Template", tmp_path)
+
+        assert not (tmp_path / self.MARKER).exists(), result.stdout + result.stderr
+        assert result.returncode == 0, result.stderr
+        # The payload came through as inert text in the expanded template.
+        assert "New-Item pwned.txt" in result.stdout

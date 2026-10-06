@@ -61,6 +61,7 @@ def _build_namespace(root, timers_frame, timers):
         "_update_layout_btn": lambda: None,
         "_layout_tip": types.SimpleNamespace(winfo_ismapped=lambda: False),
         "_update_mute_btn": lambda: None,
+        "_restore_volume_if_silent": lambda: None,
         "_mute_tip": types.SimpleNamespace(winfo_ismapped=lambda: False),
         "_place_add_tile": lambda: None,
         "_muted": False,
@@ -77,8 +78,11 @@ def _build_namespace(root, timers_frame, timers):
     flash_src = _extract(r"(^_FLASH_COLORS = .*?)$")
     max_title_src = _extract(r"(^MAX_TITLE_LEN = \d+)$")
     btnw_src = _extract(r"(^BTN_W = \d+)$")
-    timerw_src = _extract(r"(^TIMER_W = \d+)$")
+    timerw_src = _extract(r"(^TIMER_W_STACK = \d+\nTIMER_W_ROW = \d+)$")
+    timerwfn_src = _extract(r"(^def _timer_w\(\):.*?)(?=^# ── Settings persistence)")
     timerh_src = _extract(r"(^TIMER_H = \d+)$")
+    countdown_pt_src = _extract(r"(^COUNTDOWN_PT = \d+)")
+    countdown_days_pt_src = _extract(r"(^COUNTDOWN_DAYS_PT = \d+)")
     make_tip_src = _extract(r"(^def _make_tip\(parent=None\):.*?)(?=^\n\n# ── Timer widget)")
     timerwidget_src = _extract(r"(^class TimerWidget.*?)(?=^# ── Root window)")
     make_sep_src = _extract(r"(^def _make_separator\(\):.*?)(?=^def _pack_timer)")
@@ -91,7 +95,7 @@ def _build_namespace(root, timers_frame, timers):
     set_sound_enabled_src = _extract(r"(^def _set_sound_controls_enabled\(tw, enabled\):.*?)(?=^def toggle_mute)")
     toggle_mute_src = _extract(r"(^def toggle_mute\(\):.*?)(?=^def _update_mute_btn)")
 
-    for src in (max_title_src, timerw_src, timerh_src, btnw_src, flash_src, fmt_src, parse_src,
+    for src in (max_title_src, timerw_src, timerwfn_src, timerh_src, countdown_pt_src, countdown_days_pt_src, btnw_src, flash_src, fmt_src, parse_src,
                 make_tip_src, timerwidget_src, make_sep_src, pack_timer_src,
                 fit_window_src, relayout_src, toggle_src,
                 set_sound_enabled_src, toggle_mute_src, add_timer_src, remove_timer_src):
@@ -146,7 +150,7 @@ class TestFixedBoxSize:
     def test_single_timer_forced_to_timer_w_and_h(self, env):
         tw = _add_timer(env)
         env["root"].update_idletasks()
-        assert tw.winfo_reqwidth() == env["TIMER_W"]
+        assert tw.winfo_reqwidth() == env["_timer_w"]()
         assert tw.winfo_reqheight() == env["TIMER_H"]
 
     def test_running_state_does_not_change_box_size(self, env):
@@ -154,7 +158,7 @@ class TestFixedBoxSize:
         env["root"].update_idletasks()
         tw._set_state("running")
         env["root"].update_idletasks()
-        assert tw.winfo_reqwidth() == env["TIMER_W"]
+        assert tw.winfo_reqwidth() == env["_timer_w"]()
         assert tw.winfo_reqheight() == env["TIMER_H"]
 
     def test_paused_state_does_not_change_box_size(self, env):
@@ -162,13 +166,13 @@ class TestFixedBoxSize:
         env["root"].update_idletasks()
         tw._set_state("paused")
         env["root"].update_idletasks()
-        assert tw.winfo_reqwidth() == env["TIMER_W"]
+        assert tw.winfo_reqwidth() == env["_timer_w"]()
         assert tw.winfo_reqheight() == env["TIMER_H"]
 
     def test_deletable_timer_with_x_button_same_size(self, env):
         tw = _add_timer(env, deletable=True)
         env["root"].update_idletasks()
-        assert tw.winfo_reqwidth() == env["TIMER_W"]
+        assert tw.winfo_reqwidth() == env["_timer_w"]()
         assert tw.winfo_reqheight() == env["TIMER_H"]
 
     def test_paused_button_width_uses_timer_w_not_root_width(self, env):
@@ -179,14 +183,65 @@ class TestFixedBoxSize:
         env["root"].update_idletasks()
         # Make the root window artificially very wide — if the paused-button
         # formula still used root width, this would blow the button width up.
-        env["root"].geometry(f"{env['TIMER_W'] * 5}x{env['TIMER_H']}")
+        env["root"].geometry(f"{env['_timer_w']() * 5}x{env['TIMER_H']}")
         env["root"].update_idletasks()
         tw._set_state("paused")
         env["root"].update_idletasks()
-        expected = max(40, (env["TIMER_W"] - 70) // 3)
+        expected = max(40, (env["_timer_w"]() - 70) // 3)
         assert tw.stop_btn.cget("width") == expected
         assert tw.resume_btn.cget("width") == expected
         assert tw.restart_btn.cget("width") == expected
+
+
+class TestPerLayoutWidth:
+    """Row (sideways) timers are narrower than stacked ones."""
+
+    def test_row_width_is_narrower_than_stack(self, env):
+        assert env["TIMER_W_ROW"] == 210 and env["TIMER_W_STACK"] == 240
+
+    def test_row_mode_timer_is_row_width(self, env):
+        env["_layout_mode"] = "row"
+        tw = _add_timer(env)
+        env["root"].update_idletasks()
+        assert tw.winfo_reqwidth() == env["TIMER_W_ROW"]
+
+    def test_toggle_resizes_existing_timers_both_ways(self, env):
+        tw = _add_timer(env)
+        env["root"].update_idletasks()
+        assert tw.winfo_reqwidth() == env["TIMER_W_STACK"]
+        env["_toggle_layout_mode"]()
+        env["root"].update_idletasks()
+        assert tw.winfo_reqwidth() == env["TIMER_W_ROW"]
+        env["_toggle_layout_mode"]()
+        env["root"].update_idletasks()
+        assert tw.winfo_reqwidth() == env["TIMER_W_STACK"]
+
+    def test_paused_buttons_follow_the_layout_width(self, env):
+        tw = _add_timer(env)
+        tw._set_state("paused")
+        env["_toggle_layout_mode"]()
+        assert tw.stop_btn.cget("width") == max(40, (env["TIMER_W_ROW"] - 70) // 3)
+        env["_toggle_layout_mode"]()
+        assert tw.stop_btn.cget("width") == max(40, (env["TIMER_W_STACK"] - 70) // 3)
+
+    def test_pack_timer_accepts_a_plain_frame_like_the_add_tile(self, env):
+        """Regression: _place_add_tile packs a bare CTkFrame through _pack_timer;
+        the first width change called TimerWidget-only code on it and crashed the
+        app at startup (the suite stubs _place_add_tile, so only this catches it)."""
+        for mode in ("stack", "row"):
+            env["_layout_mode"] = mode
+            tile = ctk.CTkFrame(env["timers_frame"], width=32, height=32)
+            env["_pack_timer"](tile)
+            tile.destroy()
+
+    def test_widest_countdown_fits_row_width(self, env):
+        """The 32d countdown is the floor that set the row width."""
+        env["_layout_mode"] = "row"
+        tw = _add_timer(env)
+        tw.display_var.set("30d 23:59:59")
+        env["root"].update_idletasks()
+        need = tw.countdown_frame.winfo_reqwidth()
+        assert need <= env["TIMER_W_ROW"], need
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +391,7 @@ class TestFitWindowRow:
         env["_fit_window"]()
         env["root"].update()
         # width should fit all 3 boxes, not just one
-        assert env["root"].winfo_width() >= env["TIMER_W"] * 3
+        assert env["root"].winfo_width() >= env["_timer_w"]() * 3
 
 
 class TestFitWindowStack:
@@ -397,7 +452,7 @@ class TestToggleLayoutMode:
         env["_toggle_layout_mode"]()  # -> row, now wide
         env["root"].update()
         row_width = env["root"].winfo_width()
-        assert row_width > env["TIMER_W"] * 2  # sanity: genuinely wide
+        assert row_width > env["_timer_w"]() * 2  # sanity: genuinely wide
 
         env["_toggle_layout_mode"]()  # -> stack
         env["root"].update()
@@ -486,6 +541,38 @@ class TestToggleMute:
         assert tw.notify_enabled is True
 
     # -- Mute/unmute doesn't disturb anything else about a timer's state --
+
+    # -- Grey-out holds on every route into mute (button, right-click, slider to 0) --
+
+    def test_set_muted_true_greys_sound_icons_but_not_the_bell(self, env):
+        tw = _add_timer(env, sound="short")
+        env["_set_muted"](True)
+        assert env["_muted"] is True
+        for btn in tw._sound_btns.values():
+            assert btn.cget("state") == "disabled"
+        assert tw.notify_btn.cget("state") == "normal"
+
+    def test_set_muted_false_restores_the_sound_icons(self, env):
+        tw = _add_timer(env, sound="short")
+        env["_set_muted"](True)
+        env["_set_muted"](False)
+        for btn in tw._sound_btns.values():
+            assert btn.cget("state") == "normal"
+
+    def test_set_muted_to_the_same_value_does_nothing(self, env):
+        tw = _add_timer(env, sound="short")
+        before = {k: b.cget("state") for k, b in tw._sound_btns.items()}
+        env["_set_muted"](False)
+        assert {k: b.cget("state") for k, b in tw._sound_btns.items()} == before
+
+    def test_unmuting_asks_for_the_volume_check(self, env):
+        seen = []
+        env["_restore_volume_if_silent"] = lambda: seen.append(1)
+        _add_timer(env, sound="short")
+        env["_set_muted"](True)
+        assert seen == []
+        env["_set_muted"](False)
+        assert seen == [1]
 
     def test_mute_does_not_change_duration_or_remaining(self, env):
         tw = _add_timer(env, sound="short")
