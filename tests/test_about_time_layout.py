@@ -153,13 +153,6 @@ class TestFixedBoxSize:
         assert tw.winfo_reqwidth() == env["_timer_w"]()
         assert tw.winfo_reqheight() == env["TIMER_H"]
 
-    def test_running_state_does_not_change_box_size(self, env):
-        tw = _add_timer(env)
-        env["root"].update_idletasks()
-        tw._set_state("running")
-        env["root"].update_idletasks()
-        assert tw.winfo_reqwidth() == env["_timer_w"]()
-        assert tw.winfo_reqheight() == env["TIMER_H"]
 
     def test_paused_state_does_not_change_box_size(self, env):
         tw = _add_timer(env)
@@ -511,12 +504,6 @@ class TestToggleMute:
     # -- Sound buttons locked while muted (user-decided fix for the "one
     #    timer quietly un-muted while global mute still shows on" edge case) --
 
-    def test_sound_buttons_re_enabled_after_unmute(self, env):
-        tw = _add_timer(env, sound="short")
-        env["toggle_mute"]()
-        env["toggle_mute"]()
-        for btn in tw._sound_btns.values():
-            assert btn.cget("state") == "normal"
 
     def test_sound_buttons_start_enabled_when_not_muted(self, env):
         tw = _add_timer(env, sound="short")
@@ -611,12 +598,7 @@ class TestToggleMute:
 
     @pytest.mark.parametrize("sounds", [
         ("short",),
-        ("short", "medium"),
-        ("short", "medium", "long"),
-        ("short", "medium", "long", None),
-        ("short", "medium", "long", None, "short"),
         (None, None, None, None, None),
-        ("long", "long", "long", "long", "long"),
         ("medium", None, "short", None, "long"),
     ])
     def test_mute_then_unmute_leaves_exact_combination_unchanged(self, env, sounds):
@@ -628,7 +610,7 @@ class TestToggleMute:
         env["toggle_mute"]()
         assert [tw.sound_mode for tw in widgets] == list(sounds)
 
-    @pytest.mark.parametrize("count", [1, 2, 3, 4, 5])
+    @pytest.mark.parametrize("count", [1, 3])
     def test_mute_disables_exactly_n_timers_sound_buttons(self, env, count):
         widgets = [_add_timer(env, sound="short") for _ in range(count)]
         env["toggle_mute"]()

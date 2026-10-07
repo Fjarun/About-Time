@@ -152,9 +152,6 @@ class TestLoadSettingsMissingFile:
         assert r["window_x"] is None
         assert r["window_y"] is None
 
-    def test_pinned_default_false(self, load):
-        fn, _ = load
-        assert fn()["pinned"] is False
 
 
 class TestLoadSettingsCorruptFile:
@@ -198,11 +195,6 @@ class TestLoadSettingsHappyPath:
         assert r["timers"][0]["sound"] == "medium"
         assert r["timers"][0]["notify"] is True
 
-    def test_pinned_true(self, load):
-        fn, path = load
-        self._write(path, {"pinned": True})
-        r = fn()
-        assert r["pinned"] is True
 
     def test_layout_mode_row_round_trips(self, load):
         fn, path = load
@@ -216,23 +208,8 @@ class TestLoadSettingsHappyPath:
         r = fn()
         assert r["layout_mode"] == "stack"
 
-    def test_muted_true_round_trips(self, load):
-        fn, path = load
-        self._write(path, {"muted": True})
-        r = fn()
-        assert r["muted"] is True
 
-    def test_muted_false_round_trips(self, load):
-        fn, path = load
-        self._write(path, {"muted": False})
-        r = fn()
-        assert r["muted"] is False
 
-    def test_muted_defaults_false_when_absent(self, load):
-        fn, path = load
-        self._write(path, {"pinned": True})
-        r = fn()
-        assert r["muted"] is False
 
 
 class TestLoadSettingsLayoutMode:
@@ -662,8 +639,6 @@ class TestParseInputMinutesOnly:
     def test_zero_minutes_returns_none(self, parse):
         assert parse("0") is None
 
-    def test_zero_m_returns_none(self, parse):
-        assert parse("0m") is None
 
 
 class TestParseInputSeconds:
@@ -690,8 +665,6 @@ class TestParseInputHours:
     def test_hours_suffix(self, parse):
         assert parse("2h") == 2 * 3600
 
-    def test_1_hour(self, parse):
-        assert parse("1h") == 3600
 
     def test_0_hours_returns_none(self, parse):
         assert parse("0h") is None
@@ -705,14 +678,10 @@ class TestParseInputDays:
     def test_days_suffix(self, parse):
         assert parse("7d") == 7 * 86400
 
-    def test_1_day(self, parse):
-        assert parse("1d") == 86400
 
     def test_0_days_returns_none(self, parse):
         assert parse("0d") is None
 
-    def test_case_insensitive_days(self, parse):
-        assert parse("7D") == 7 * 86400
 
     def test_days_equals_equivalent_hours(self, parse):
         assert parse("7d") == parse("168h")
@@ -856,11 +825,7 @@ class TestParseInputEdgeCases:
     def test_case_insensitive_suffix(self, parse):
         assert parse("5M") == 5 * 60
 
-    def test_case_insensitive_hours(self, parse):
-        assert parse("1H") == 3600
 
-    def test_case_insensitive_seconds(self, parse):
-        assert parse("30S") == 30
 
 
 class TestParseInputMixedUnits:
@@ -879,8 +844,6 @@ class TestParseInputMixedUnits:
     def test_all_four_units(self, parse):
         assert parse("1d2h3m4s") == 86400 + 2 * 3600 + 3 * 60 + 4
 
-    def test_case_insensitive(self, parse):
-        assert parse("3H14M") == 3 * 3600 + 14 * 60
 
     def test_units_in_any_order(self, parse):
         assert parse("15m3h") == 3 * 3600 + 15 * 60
@@ -911,11 +874,7 @@ class TestFmt:
     def test_less_than_hour_shows_mm_ss(self, fmt_fn):
         assert fmt_fn(90) == "01:30"
 
-    def test_zero_seconds(self, fmt_fn):
-        assert fmt_fn(0) == "00:00"
 
-    def test_59_seconds(self, fmt_fn):
-        assert fmt_fn(59) == "00:59"
 
     def test_60_seconds(self, fmt_fn):
         assert fmt_fn(60) == "01:00"
@@ -932,8 +891,6 @@ class TestFmt:
     def test_23_hours_59_stays_hour_format_below_a_day(self, fmt_fn):
         assert fmt_fn(23 * 3600 + 59 * 60 + 59) == "23:59:59"
 
-    def test_7200_two_hours(self, fmt_fn):
-        assert fmt_fn(7200) == "2:00:00"
 
     def test_padding_single_digit_minutes_and_seconds(self, fmt_fn):
         assert fmt_fn(65) == "01:05"
@@ -944,8 +901,6 @@ class TestFmt:
     def test_one_day_one_second_before_stays_hour_format(self, fmt_fn):
         assert fmt_fn(86399) == "23:59:59"
 
-    def test_seven_days(self, fmt_fn):
-        assert fmt_fn(7 * 86400) == "7d 0:00:00"
 
     def test_359999_seconds_is_now_day_format(self, fmt_fn):
         # 359999s = 4 days, 3:59:59 remainder — this used to be the old

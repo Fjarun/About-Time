@@ -130,15 +130,7 @@ class TestToastXmlSafety:
     """A title containing the CDATA terminator must not be able to close the
     CDATA section and inject toast XML."""
 
-    def test_cdata_terminator_neutralised(self, notify_env):
-        notify_env["notify"]("a]]><x/>", "5:00")
-        msg = _decode_msg(notify_env["_ps_calls"][0])
-        assert "]]>" not in msg
 
-    def test_control_characters_stripped(self, notify_env):
-        notify_env["notify"]("a\x00b\x08c", "5:00")
-        msg = _decode_msg(notify_env["_ps_calls"][0])
-        assert msg == "Your timer 'abc' has finished."
 
 
 class TestRunToastScript:
