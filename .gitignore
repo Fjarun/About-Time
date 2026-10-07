@@ -21,8 +21,7 @@ tests/__pycache__/
 # Source file patterns
 !*.py
 
-# Root exceptions: CLAUDE.md/.claude confirmed NOT discovered when nested
-# inside Internal/ (tested 2026-09-12, Project Scapegoat) — must stay at
-# project root, individually ignored here rather than folded into Internal/.
+# Root exceptions: CLAUDE.md and .claude/ are not picked up when nested inside
+# Internal/, so they stay at the project root and are ignored individually here.
 CLAUDE.md
 .claude/
