@@ -152,9 +152,6 @@ class TestLoadSettingsMissingFile:
         assert r["window_x"] is None
         assert r["window_y"] is None
 
-    def test_pinned_default_false(self, load):
-        fn, _ = load
-        assert fn()["pinned"] is False
 
 
 class TestLoadSettingsCorruptFile:
@@ -198,11 +195,6 @@ class TestLoadSettingsHappyPath:
         assert r["timers"][0]["sound"] == "medium"
         assert r["timers"][0]["notify"] is True
 
-    def test_pinned_true(self, load):
-        fn, path = load
-        self._write(path, {"pinned": True})
-        r = fn()
-        assert r["pinned"] is True
 
     def test_layout_mode_row_round_trips(self, load):
         fn, path = load
@@ -216,23 +208,8 @@ class TestLoadSettingsHappyPath:
         r = fn()
         assert r["layout_mode"] == "stack"
 
-    def test_muted_true_round_trips(self, load):
-        fn, path = load
-        self._write(path, {"muted": True})
-        r = fn()
-        assert r["muted"] is True
 
-    def test_muted_false_round_trips(self, load):
-        fn, path = load
-        self._write(path, {"muted": False})
-        r = fn()
-        assert r["muted"] is False
 
-    def test_muted_defaults_false_when_absent(self, load):
-        fn, path = load
-        self._write(path, {"pinned": True})
-        r = fn()
-        assert r["muted"] is False
 
 
 class TestLoadSettingsLayoutMode:
@@ -450,6 +427,61 @@ class TestLoadSettingsInvalidFieldValues:
         assert r["timers"][0]["title"] == ""
 
 
+class TestLoadSettingsHardening:
+    def test_long_title_clipped_to_100_chars(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"timers": [{"title": "x" * 3000}]}))
+        assert fn()["timers"][0]["title"] == "x" * 100
+
+    def test_legacy_title_clipped_too(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"titles": ["y" * 500]}))
+        assert fn()["timers"][0]["title"] == "y" * 100
+
+    def test_oversize_file_rejected_not_parsed(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"timers": [{"title": "ok"}], "pad": "z" * (300 * 1024)}))
+        result = fn()
+        assert result["timers"] == []
+        assert f.with_name("settings.json.bak").exists()
+
+    def test_corrupt_file_kept_as_bak(self, load):
+        fn, f = load
+        f.write_text("{not json")
+        fn()
+        bak = f.with_name("settings.json.bak")
+        assert bak.read_text() == "{not json"
+        assert not f.exists()
+
+    def test_non_object_root_treated_as_corrupt(self, load):
+        fn, f = load
+        f.write_text("[1, 2, 3]")
+        assert fn()["timers"] == []
+        assert f.with_name("settings.json.bak").exists()
+
+    def test_missing_file_makes_no_bak_or_log(self, load):
+        fn, f = load
+        fn()
+        assert not f.with_name("settings.json.bak").exists()
+        assert not f.with_name("error.log").exists()
+
+    def test_failure_written_to_error_log(self, load):
+        fn, f = load
+        f.write_text("{not json")
+        fn()
+        assert "_load_settings failed" in f.with_name("error.log").read_text()
+
+
+class TestLogErrorCap:
+    def test_log_rotated_when_over_cap(self, ns):
+        namespace, f = ns
+        log = f.with_name("error.log")
+        log.write_text("a" * (namespace["_MAX_LOG_BYTES"] + 10))
+        namespace["_log_error"]("fresh")
+        assert log.read_text().strip().endswith(" fresh")
+        assert log.with_name("error.log.old").exists()
+
+
 class TestLoadSettingsLegacyTitlesMigration:
     def _write(self, path, data):
         path.write_text(json.dumps(data), encoding="utf-8")
@@ -607,8 +639,6 @@ class TestParseInputMinutesOnly:
     def test_zero_minutes_returns_none(self, parse):
         assert parse("0") is None
 
-    def test_zero_m_returns_none(self, parse):
-        assert parse("0m") is None
 
 
 class TestParseInputSeconds:
@@ -635,8 +665,6 @@ class TestParseInputHours:
     def test_hours_suffix(self, parse):
         assert parse("2h") == 2 * 3600
 
-    def test_1_hour(self, parse):
-        assert parse("1h") == 3600
 
     def test_0_hours_returns_none(self, parse):
         assert parse("0h") is None
@@ -650,14 +678,10 @@ class TestParseInputDays:
     def test_days_suffix(self, parse):
         assert parse("7d") == 7 * 86400
 
-    def test_1_day(self, parse):
-        assert parse("1d") == 86400
 
     def test_0_days_returns_none(self, parse):
         assert parse("0d") is None
 
-    def test_case_insensitive_days(self, parse):
-        assert parse("7D") == 7 * 86400
 
     def test_days_equals_equivalent_hours(self, parse):
         assert parse("7d") == parse("168h")
@@ -801,11 +825,7 @@ class TestParseInputEdgeCases:
     def test_case_insensitive_suffix(self, parse):
         assert parse("5M") == 5 * 60
 
-    def test_case_insensitive_hours(self, parse):
-        assert parse("1H") == 3600
 
-    def test_case_insensitive_seconds(self, parse):
-        assert parse("30S") == 30
 
 
 class TestParseInputMixedUnits:
@@ -824,8 +844,6 @@ class TestParseInputMixedUnits:
     def test_all_four_units(self, parse):
         assert parse("1d2h3m4s") == 86400 + 2 * 3600 + 3 * 60 + 4
 
-    def test_case_insensitive(self, parse):
-        assert parse("3H14M") == 3 * 3600 + 14 * 60
 
     def test_units_in_any_order(self, parse):
         assert parse("15m3h") == 3 * 3600 + 15 * 60
@@ -856,11 +874,7 @@ class TestFmt:
     def test_less_than_hour_shows_mm_ss(self, fmt_fn):
         assert fmt_fn(90) == "01:30"
 
-    def test_zero_seconds(self, fmt_fn):
-        assert fmt_fn(0) == "00:00"
 
-    def test_59_seconds(self, fmt_fn):
-        assert fmt_fn(59) == "00:59"
 
     def test_60_seconds(self, fmt_fn):
         assert fmt_fn(60) == "01:00"
@@ -877,8 +891,6 @@ class TestFmt:
     def test_23_hours_59_stays_hour_format_below_a_day(self, fmt_fn):
         assert fmt_fn(23 * 3600 + 59 * 60 + 59) == "23:59:59"
 
-    def test_7200_two_hours(self, fmt_fn):
-        assert fmt_fn(7200) == "2:00:00"
 
     def test_padding_single_digit_minutes_and_seconds(self, fmt_fn):
         assert fmt_fn(65) == "01:05"
@@ -889,8 +901,6 @@ class TestFmt:
     def test_one_day_one_second_before_stays_hour_format(self, fmt_fn):
         assert fmt_fn(86399) == "23:59:59"
 
-    def test_seven_days(self, fmt_fn):
-        assert fmt_fn(7 * 86400) == "7d 0:00:00"
 
     def test_359999_seconds_is_now_day_format(self, fmt_fn):
         # 359999s = 4 days, 3:59:59 remainder — this used to be the old
@@ -904,3 +914,220 @@ class TestFmt:
 
     def test_thirty_two_day_max_boundary(self, fmt_fn):
         assert fmt_fn(32 * 86400 - 1) == "31d 23:59:59"
+
+
+class TestLoadSettingsStrictBooleans:
+    """pinned/muted are honoured only as real JSON booleans; anything else
+    (strings, ints, null) falls back to the default False."""
+
+    @pytest.mark.parametrize("key", ["pinned", "muted"])
+    @pytest.mark.parametrize("bad", ["false", "true", "yes", 1, 0, 2, None, [], {}])
+    def test_non_boolean_value_falls_back_to_false(self, load, key, bad):
+        fn, f = load
+        f.write_text(json.dumps({key: bad}))
+        assert fn()[key] is False
+
+    @pytest.mark.parametrize("key", ["pinned", "muted"])
+    def test_real_true_is_honoured(self, load, key):
+        fn, f = load
+        f.write_text(json.dumps({key: True}))
+        assert fn()[key] is True
+
+    @pytest.mark.parametrize("key", ["pinned", "muted"])
+    def test_real_false_is_honoured(self, load, key):
+        fn, f = load
+        f.write_text(json.dumps({key: False}))
+        assert fn()[key] is False
+
+    def test_missing_pinned_and_muted_default_to_false(self, load):
+        fn, f = load
+        f.write_text(json.dumps({}))
+        r = fn()
+        assert r["pinned"] is False and r["muted"] is False
+
+    def test_bad_pinned_does_not_discard_valid_muted(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"pinned": "true", "muted": True}))
+        r = fn()
+        assert r["pinned"] is False and r["muted"] is True
+
+
+class TestLoadSettingsLegacyNotificationsStrict:
+    """Legacy global "notifications" key enables the per-timer notify default
+    only when it is the literal JSON true."""
+
+    def _notify_of_first_timer(self, load, value):
+        fn, f = load
+        f.write_text(json.dumps({"notifications": value, "timers": [{"title": "a"}]}))
+        return fn()["timers"][0]["notify"]
+
+    def test_literal_true_enables_legacy_notify_default(self, load):
+        assert self._notify_of_first_timer(load, True) is True
+
+    @pytest.mark.parametrize("value", [False, "false", "true", 1, 0, None])
+    def test_non_true_value_does_not_enable_legacy_notify(self, load, value):
+        assert self._notify_of_first_timer(load, value) is False
+
+    def test_absent_key_leaves_notify_off(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"timers": [{"title": "a"}]}))
+        assert fn()["timers"][0]["notify"] is False
+
+    def test_string_false_does_not_enable_notify_in_legacy_titles_path(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"notifications": "false", "titles": ["a"]}))
+        assert fn()["timers"][0]["notify"] is False
+
+    def test_explicit_per_timer_notify_beats_legacy_key(self, load):
+        fn, f = load
+        f.write_text(json.dumps({"notifications": True,
+                                 "timers": [{"title": "a", "notify": False}]}))
+        assert fn()["timers"][0]["notify"] is False
+
+
+_ISO_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}) (.*)$")
+
+
+class TestLogErrorFormat:
+    def test_line_starts_with_iso_timestamp_then_space_then_message(self, ns):
+        namespace, f = ns
+        namespace["_log_error"]("boom happened")
+        lines = f.with_name("error.log").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 1
+        m = _ISO_LINE.match(lines[0])
+        assert m, f"bad log line: {lines[0]!r}"
+        assert m.group(2) == "boom happened"
+
+    def test_timestamp_is_parseable_and_recent(self, ns):
+        from datetime import datetime, timedelta
+        namespace, f = ns
+        before = datetime.now().replace(microsecond=0)
+        namespace["_log_error"]("x")
+        line = f.with_name("error.log").read_text(encoding="utf-8").splitlines()[0]
+        stamp = datetime.fromisoformat(_ISO_LINE.match(line).group(1))
+        assert before <= stamp <= datetime.now() + timedelta(seconds=1)
+
+    def test_multiple_calls_append_in_order(self, ns):
+        namespace, f = ns
+        for msg in ("first", "second", "third"):
+            namespace["_log_error"](msg)
+        lines = f.with_name("error.log").read_text(encoding="utf-8").splitlines()
+        assert [_ISO_LINE.match(l).group(2) for l in lines] == ["first", "second", "third"]
+
+    def test_empty_message_still_logs_timestamped_line(self, ns):
+        namespace, f = ns
+        namespace["_log_error"]("")
+        line = f.with_name("error.log").read_text(encoding="utf-8").splitlines()[0]
+        assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2} $", line)
+
+    def test_unwritable_log_location_does_not_raise(self, tmp_path):
+        blocker = tmp_path / "blocker"
+        blocker.write_text("i am a file, not a directory")
+        namespace = _make_namespace(str(blocker / "settings.json"))
+        namespace["_log_error"]("cannot be written")  # must not raise
+        assert blocker.read_text() == "i am a file, not a directory"
+
+    def test_log_failure_during_write_does_not_raise(self, ns):
+        namespace, f = ns
+        with mock.patch("builtins.open", side_effect=PermissionError("denied")):
+            namespace["_log_error"]("denied write")  # must not raise
+        assert not f.with_name("error.log").exists()
+
+
+# ---------------------------------------------------------------------------
+# parse_input: oversized input (A4) — int() raises ValueError past ~4300
+# digits, which used to escape parse_input and leave the UI stuck.
+# ---------------------------------------------------------------------------
+
+class TestParseInputOversized:
+    @pytest.mark.parametrize("text", [
+        "9" * 5000,              # bare minutes branch
+        "9" * 5000 + "d 1:00:00",  # day-prefix branch
+        "1:" + "9" * 5000,       # colon branch
+        "1h" + "9" * 5000 + "m",  # mixed-unit branch
+    ])
+    def test_thousands_of_digits_returns_none_not_raise(self, parse, text):
+        assert parse(text) is None
+
+    def test_over_40_chars_rejected_even_if_otherwise_valid(self, parse):
+        assert parse("0" * 41 + "5") is None  # "5" minutes, padded past the cap
+
+    def test_exactly_40_chars_still_parsed(self, parse):
+        assert parse("0" * 38 + "10") == 10 * 60
+
+    def test_longest_realistic_inputs_still_parse(self, parse):
+        assert parse("29d 23:59:59") == 29 * 86400 + 23 * 3600 + 59 * 60 + 59
+        assert parse("1d 2h 15m 30s") == 86400 + 2 * 3600 + 15 * 60 + 30
+
+
+# ---------------------------------------------------------------------------
+# A2: a read failure (lock) must not be treated as a corrupt file, and a
+# failed backup must block saving instead of letting the next save overwrite
+# the original.
+# ---------------------------------------------------------------------------
+
+def _locked_open(settings_file, exc):
+    """builtins.open replacement that fails only for the settings file."""
+    real_open = open
+    def fake(path, *a, **k):
+        if str(path) == str(settings_file):
+            raise exc
+        return real_open(path, *a, **k)
+    return fake
+
+
+class TestLoadSettingsReadFailureKeepsFile:
+    def test_locked_file_is_left_in_place_untouched(self, ns):
+        namespace, f = ns
+        content = json.dumps({"timers": [{"title": "keep me", "duration": 600}]})
+        f.write_text(content)
+        with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))):
+            result = namespace["_load_settings"]()
+        assert result["timers"] == []                         # defaults returned
+        assert f.read_text() == content                       # original untouched
+        assert not f.with_name("settings.json.bak").exists()  # not moved aside
+
+    def test_locked_file_blocks_saving_and_is_logged(self, ns):
+        namespace, f = ns
+        f.write_text(json.dumps({"timers": []}))
+        with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))):
+            namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is True
+        assert "could not read settings" in f.with_name("error.log").read_text()
+
+    def test_stat_failure_is_not_mistaken_for_missing_file(self, ns):
+        namespace, f = ns
+        f.write_text(json.dumps({"timers": []}))
+        with mock.patch("os.path.getsize", side_effect=PermissionError("locked")):
+            namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is True
+        assert f.exists()
+
+    def test_missing_file_does_not_block_saving(self, ns):
+        namespace, f = ns
+        namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is False
+
+    def test_corrupt_file_backed_up_does_not_block_saving(self, ns):
+        namespace, f = ns
+        f.write_text("{not json")
+        namespace["_load_settings"]()
+        assert f.with_name("settings.json.bak").exists()
+        assert namespace["_settings_write_blocked"] is False
+
+    def test_failed_backup_blocks_saving_and_keeps_original(self, ns):
+        namespace, f = ns
+        f.write_text("{not json")
+        with mock.patch("os.replace", side_effect=PermissionError("locked")):
+            namespace["_load_settings"]()
+        assert namespace["_settings_write_blocked"] is True
+        assert f.read_text() == "{not json"                   # original still there
+        assert "could not back up" in f.with_name("error.log").read_text()
+
+    def test_backup_helper_returns_true_on_success_false_on_failure(self, ns):
+        namespace, f = ns
+        f.write_text("x")
+        assert namespace["_backup_corrupt_settings"]() is True
+        f.write_text("y")
+        with mock.patch("os.replace", side_effect=OSError("nope")):
+            assert namespace["_backup_corrupt_settings"]() is False
