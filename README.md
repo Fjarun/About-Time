@@ -4,7 +4,7 @@
   <img src="Assets/hero_banner.png" alt="About Time — five simultaneous timers in row layout, each independently named, running, or finished">
 </p>
 
-![Version](https://img.shields.io/badge/version-v0.10.0-blue)
+![Version](https://img.shields.io/badge/version-v0.12.0-blue)
 ![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
 ![Status](https://img.shields.io/badge/status-Active%20Development-orange)
@@ -39,15 +39,19 @@ No Python or code needed.
 
 ## Features
 
+<img src="Assets/always_on_top.png" alt="A single timer with the always-on-top tooltip showing that the window is pinned above other windows" align="right" width="240">
+
 - **Always-on-top toggle** — pin the window so it floats above everything else on screen
 - Run between from between **1 to 5 countdown timers** at once, each allowing a unique name and sound or popup notification setting.
 - Custom time input per timer, supporting up to 30 days: plain number input is assumed to be minutes, otherwise you can suffix with `s`/`m`/`h`/`d` for a single unit and mix units in one go — `3h14m`, `1d2h15m`
 - Click the countdown display to edit the time at any point — even with on-going timers.
 - **Windows desktop notifications** — opt-in toast alerts when a timer finishes, toggled per timer, showing that timer's name or duration if untitled
 
+<br clear="right">
+
 ### Sounds
 
-<img src="Assets/single_timer_sound_picker.png" alt="A single timer in stack mode with its sound picker active" align="right" width="240">
+<img src="Assets/single_timer_sound_picker.png" alt="A single timer in stack mode with the volume tooltip showing the app's current volume and right-click to mute" align="right" width="240">
 
 - Three notification chimes — short, medium, and long, designed as a consistent family
 - Each timer has its own sound picker — pick short, medium, or long, or click the active one again to turn that timer's sound off
@@ -69,12 +73,17 @@ No Python or code needed.
 - Window position, timer count, timer names and durations should all be remembered between sessions
 - Mid-run and paused timers restore at their remaining time on reopen — ready to resume or reset, no progress lost on accidental close
 - Settings such as sound choice, always-on-top, notification toggle and more are written to %appdata%\About Time\settings.json - if you need the file for some reason, check appdata roaming.
+- If `settings.json` ever becomes unreadable or corrupted, About Time keeps the bad file as `settings.json.bak` next to it, rather than overwriting it, and starts fresh with defaults.
 
 <br clear="right">
 
 ## Known Issues / Notes
 
 - **First launch should always start at 50% volume, not your system default.** This is intentional, not a bug: a brand-new Windows audio session for an app defaults to 100%, and About Time's own volume lives entirely in Windows' per-app Volume Mixer (see Sounds above). Because of this combination of settings, it's a risk that the first alarm is VERY LOUD for users who may have high speak settings, so I've pre-lowered the volume to soften that. You can always edit this yourself if you find it too quiet. 
+
+### Error log
+
+If something goes wrong, About Time writes a short timestamped note to `error.log` in `%appdata%\About Time\`, the same folder as `settings.json`. It's useful to attach when reporting a bug. The log is capped at 256 KB: past that, the old one is kept as `error.log.old` and a fresh one starts.
 
 ## Tech Stack
 
