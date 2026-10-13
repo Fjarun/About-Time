@@ -4,7 +4,7 @@
   <img src="Assets/hero_banner.png" alt="About Time — five simultaneous timers in row layout, each independently named, running, or finished">
 </p>
 
-![Version](https://img.shields.io/badge/version-v0.12.0-blue)
+![Version](https://img.shields.io/badge/version-v0.12.1-blue)
 ![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
 ![Status](https://img.shields.io/badge/status-Active%20Development-orange)
