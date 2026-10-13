@@ -217,7 +217,7 @@ def _log_error(message):
     log next to settings.json. Capped: past _MAX_LOG_BYTES the old log is
     replaced by a fresh one. Logging must never itself raise."""
     message = " | ".join(message.splitlines()) or message
-    message = message.translate(_LOG_STRIP)
+    message = _redact_user_path(message.translate(_LOG_STRIP))
     print(f"[About Time] {message}", file=sys.stderr)
     try:
         log_path = os.path.join(os.path.dirname(_SETTINGS_PATH), "error.log")
@@ -238,6 +238,24 @@ def _log_error(message):
 # Line breaks are already flattened above.
 _LOG_STRIP = {c: None for c in (*range(0, 9), *range(11, 32), 127)}
 _log_lock = threading.Lock()
+
+# Users are asked to attach error.log to public bug reports, and a Windows file
+# error spells out the full path, account name included. The profile part of
+# any path is therefore replaced with a fixed placeholder before it is logged.
+_USER_PATH_PLACEHOLDER = "<user path>"
+# any other profile folder on any drive, either slash style
+_OTHER_PROFILE_RE = re.compile(r"[A-Za-z]:[\\/]+Users[\\/]+[^\\/:*?\"<>|\r\n']+", re.IGNORECASE)
+
+def _redact_user_path(text):
+    """Replaces this account's profile folder, and any other drive-letter
+    Users-folder path, with a fixed placeholder, in the forms an exception
+    message uses: single backslashes, the doubled ones of a repr(), and forward
+    slashes. The rest of the path (AppData and below) is kept."""
+    home = os.path.expanduser("~")
+    if len(home) > 3 and home != "~":
+        for form in (home, home.replace("\\", "\\\\"), home.replace("\\", "/")):
+            text = re.sub(re.escape(form), _USER_PATH_PLACEHOLDER, text, flags=re.IGNORECASE)
+    return _OTHER_PROFILE_RE.sub(_USER_PATH_PLACEHOLDER, text)
 
 def _clip_title(title):
     return title[:MAX_TITLE_LEN]

@@ -514,7 +514,7 @@ class TestLogErrorFlattensNewlines:
     def test_multiline_message_is_one_log_line(self, tmp_path, monkeypatch):
         match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
                           SOURCE, re.DOTALL | re.MULTILINE)
-        ns = {"os": os, "sys": sys, "threading": threading, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        ns = {"os": os, "sys": sys, "re": re, "threading": threading, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
         exec(match.group(1), ns)
         ns["_log_error"]("real line\n2026-01-01T00:00:00 FAKE entry\r\nthird")
         lines = (tmp_path / "error.log").read_text(encoding="utf-8").splitlines()
@@ -524,7 +524,7 @@ class TestLogErrorFlattensNewlines:
     def test_single_line_message_unchanged(self, tmp_path):
         match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
                           SOURCE, re.DOTALL | re.MULTILINE)
-        ns = {"os": os, "sys": sys, "threading": threading, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        ns = {"os": os, "sys": sys, "re": re, "threading": threading, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
         exec(match.group(1), ns)
         ns["_log_error"]("plain")
         assert (tmp_path / "error.log").read_text(encoding="utf-8").strip().endswith("plain")
@@ -538,7 +538,7 @@ class TestLogErrorHardening:
     def log(self, tmp_path):
         match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
                           SOURCE, re.DOTALL | re.MULTILINE)
-        ns = {"os": os, "sys": sys, "threading": threading,
+        ns = {"os": os, "sys": sys, "re": re, "threading": threading,
               "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
         exec(match.group(1), ns)
         ns["_path"] = tmp_path / "error.log"
@@ -590,6 +590,83 @@ class TestLogErrorHardening:
             t_.join(10)
         assert inside["max"] == 1
         assert len(log["_path"].read_text(encoding="utf-8").splitlines()) == 8
+
+
+class TestLogErrorHidesTheUserPath:
+    """The README asks users to attach error.log to public bug reports, and a
+    Windows file error carries the full path with the account name in it. The
+    profile part of any path is replaced with a fixed placeholder before it is
+    written (or printed)."""
+
+    PLACEHOLDER = "<user path>"
+
+    @pytest.fixture()
+    def log(self, tmp_path, monkeypatch):
+        match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        ns = {"os": os, "sys": sys, "re": re, "threading": threading,
+              "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        exec(match.group(1), ns)
+        ns["_path"] = tmp_path / "error.log"
+        # a fake profile, so the assertions do not depend on who runs the tests
+        bs = chr(92)
+        monkeypatch.setattr(os.path, "expanduser", lambda p: "C:" + bs + "Users" + bs + "Fake Person" if p == "~" else p)
+        return ns
+
+    def _written(self, log, message):
+        log["_log_error"](message)
+        return log["_path"].read_text(encoding="utf-8")
+
+    def test_profile_path_is_replaced_and_the_rest_of_the_path_survives(self, log):
+        bs = chr(92)
+        out = self._written(log, "could not write C:" + bs + "Users" + bs + "Fake Person" + bs + "AppData" + bs + "Roaming" + bs + "About Time" + bs + "settings.json")
+        assert "Fake Person" not in out and "Users" + bs + "Fake" not in out
+        assert self.PLACEHOLDER + bs + "AppData" + bs + "Roaming" + bs + "About Time" + bs + "settings.json" in out
+
+    def test_doubled_backslash_form_used_in_exception_text_is_replaced(self, log):
+        bs = chr(92)
+        err = PermissionError(13, "Access is denied", "C:" + bs + "Users" + bs + "Fake Person" + bs + "AppData" + bs + "x.json")
+        out = self._written(log, "save failed: " + str(err))
+        assert "Fake Person" not in out
+        assert self.PLACEHOLDER in out
+
+    def test_forward_slash_and_case_variants_are_replaced(self, log):
+        out = self._written(log, "a c:/users/fake person/AppData/x and C:/Users/FAKE PERSON/y")
+        assert "fake person" not in out.lower()
+
+    def test_another_profile_on_the_machine_is_replaced_too(self, log):
+        bs = chr(92)
+        out = self._written(log, "read D:" + bs + "Users" + bs + "Someone Else" + bs + "Desktop" + bs + "a.json failed")
+        assert "Someone Else" not in out
+        assert self.PLACEHOLDER + bs + "Desktop" + bs + "a.json" in out
+
+    def test_a_message_with_no_path_is_untouched(self, log):
+        out = self._written(log, "toast script exited 1: Exception calling LoadXml")
+        assert "toast script exited 1: Exception calling LoadXml" in out
+        assert self.PLACEHOLDER not in out
+
+    def test_paths_outside_a_profile_are_left_alone(self, log):
+        bs = chr(92)
+        out = self._written(log, "missing C:" + bs + "Windows" + bs + "System32" + bs + "powershell.exe")
+        assert "C:" + bs + "Windows" + bs + "System32" + bs + "powershell.exe" in out
+
+    def test_a_multi_line_traceback_is_redacted_on_every_line(self, log):
+        bs = chr(92)
+        tb = ("Traceback" + chr(10) + '  File "C:' + bs + "Users" + bs + "Fake Person" + bs + "AppData" + bs + "Local" + bs + "Temp" + bs
+              + '_MEI123' + bs + 'x.py", line 3' + chr(10) + "OSError")
+        out = self._written(log, tb)
+        assert "Fake Person" not in out
+        assert len(out.splitlines()) == 1
+
+    def test_the_stderr_copy_is_redacted_as_well(self, log, capsys):
+        bs = chr(92)
+        log["_log_error"]("failed C:" + bs + "Users" + bs + "Fake Person" + bs + "a")
+        assert "Fake Person" not in capsys.readouterr().err
+
+    def test_a_missing_home_does_not_break_logging(self, log, monkeypatch):
+        monkeypatch.setattr(os.path, "expanduser", lambda p: p)   # unresolved "~"
+        out = self._written(log, "plain message")
+        assert "plain message" in out
 
 
 # ---------------------------------------------------------------------------
