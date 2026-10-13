@@ -7,11 +7,11 @@
 ![Version](https://img.shields.io/badge/version-v0.12.1-blue)
 ![Language](https://img.shields.io/badge/language-Python-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4?logo=windows&logoColor=white)
-![Status](https://img.shields.io/badge/status-Active%20Development-orange)
+![Status](https://img.shields.io/badge/status-Maintained-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Downloads](https://img.shields.io/github/downloads/Fjarun/About-Time/total)
 
-> **This project is in active development.** Features and behaviour may change between releases.
+> **This project is maintained.** The focus now is fixes; new features aren't planned, though behaviour may still change between releases.
 >
 > MIT licensed — free to use, copy, modify, and redistribute, including commercially, as long as the license text stays attached.
 
@@ -84,7 +84,7 @@ You may encounter SmartScreen warnings on first run. To work around these, choos
 
 ### Error log
 
-If something goes wrong, About Time writes a short timestamped note to `error.log` in `%appdata%\About Time\`, the same folder as `settings.json`. It's useful to attach when reporting a bug. The log is capped at 256 KB: past that, the old one is kept as `error.log.old` and a fresh one starts.
+If something goes wrong, About Time writes a short timestamped note to `error.log` in `%appdata%\About Time\`, the same folder as `settings.json`. If [reporting a bug](https://github.com/Fjarun/About-Time/issues/new), please include at least the error log file to make it easier to assist you. The log itself is capped at 256 KB: past that, the old one is kept as `error.log.old` and a fresh one starts.
 
 ## Tech Stack
 
