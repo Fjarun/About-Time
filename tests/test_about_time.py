@@ -7,6 +7,7 @@ in sys.modules.  The full module is never imported so tkinter and CTk are
 never instantiated.
 """
 
+import codecs
 import importlib
 import json
 import math
@@ -15,6 +16,8 @@ import re
 import struct
 import sys
 import types
+import threading
+import time
 import unittest.mock as mock
 from pathlib import Path
 
@@ -38,6 +41,8 @@ def _make_namespace(settings_path: str) -> dict:
         "json": json,
         "os": os,
         "sys": sys,
+        "time": time,
+        "threading": threading,
         "re": re,
         "math": math,
         "struct": struct,
@@ -99,7 +104,9 @@ def _make_namespace(settings_path: str) -> dict:
 def ns(tmp_path):
     """Namespace with functions wired to a temp settings file."""
     settings_file = tmp_path / "settings.json"
-    return _make_namespace(str(settings_file)), settings_file
+    namespace = _make_namespace(str(settings_file))
+    namespace["_READ_RETRY_DELAY"] = 0   # keep retry tests instant
+    return namespace, settings_file
 
 
 # Convenience aliases so individual tests stay readable
@@ -1077,31 +1084,95 @@ def _locked_open(settings_file, exc):
 
 
 class TestLoadSettingsReadFailureKeepsFile:
-    def test_locked_file_is_left_in_place_untouched(self, ns):
+    def test_unreadable_file_is_set_aside_as_bak_and_defaults_load(self, ns):
+        # Still unreadable after every retry: treated like a corrupt file, as
+        # the README promises. Nothing is lost, it lives on as settings.json.bak.
         namespace, f = ns
         content = json.dumps({"timers": [{"title": "keep me", "duration": 600}]})
         f.write_text(content)
         with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))):
             result = namespace["_load_settings"]()
-        assert result["timers"] == []                         # defaults returned
-        assert f.read_text() == content                       # original untouched
-        assert not f.with_name("settings.json.bak").exists()  # not moved aside
+        assert result["timers"] == []                                     # defaults returned
+        assert f.with_name("settings.json.bak").read_text() == content    # kept, not lost
+        assert not f.exists()                                             # moved aside
+        assert namespace["_settings_write_blocked"] is False
 
-    def test_locked_file_blocks_saving_and_is_logged(self, ns):
+    def test_unreadable_file_is_logged(self, ns):
         namespace, f = ns
         f.write_text(json.dumps({"timers": []}))
         with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))):
             namespace["_load_settings"]()
-        assert namespace["_settings_write_blocked"] is True
         assert "could not read settings" in f.with_name("error.log").read_text()
+
+    def test_unreadable_and_unmovable_file_is_left_untouched_and_blocks_saving(self, ns):
+        namespace, f = ns
+        content = json.dumps({"timers": [{"title": "keep me", "duration": 600}]})
+        f.write_text(content)
+        with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))),              mock.patch("os.replace", side_effect=PermissionError("locked")):
+            result = namespace["_load_settings"]()
+        assert result["timers"] == []
+        assert f.read_text() == content                       # original untouched
+        assert not f.with_name("settings.json.bak").exists()
+        assert namespace["_settings_write_blocked"] is True
+        assert "could not back up" in f.with_name("error.log").read_text()
+
+    def test_transient_lock_is_retried_and_file_loads_normally(self, ns):
+        namespace, f = ns
+        f.write_text(json.dumps({"timers": [{"title": "kept", "duration": 600}]}))
+        real_open = open
+        calls = {"n": 0}
+        def flaky(path, *a, **k):
+            if str(path) == str(f):
+                calls["n"] += 1
+                if calls["n"] < 3:
+                    raise PermissionError("sync client has it for a moment")
+            return real_open(path, *a, **k)
+        with mock.patch("builtins.open", flaky):
+            result = namespace["_load_settings"]()
+        assert calls["n"] == 3                                # two failures, then success
+        assert result["timers"][0]["title"] == "kept"
+        assert not f.with_name("settings.json.bak").exists()  # nothing set aside
+        assert namespace["_settings_write_blocked"] is False
+
+    def test_gives_up_after_the_configured_number_of_attempts(self, ns):
+        namespace, f = ns
+        f.write_text(json.dumps({"timers": []}))
+        calls = {"n": 0}
+        def always_locked(path, *a, **k):
+            if str(path) == str(f):
+                calls["n"] += 1
+                raise PermissionError("locked")
+            return open(path, *a, **k)
+        with mock.patch("builtins.open", always_locked):
+            namespace["_load_settings"]()
+        assert calls["n"] == namespace["_READ_ATTEMPTS"]
+
+    def test_retry_sleeps_back_off_and_stay_short(self, ns):
+        namespace, f = ns
+        namespace["_READ_RETRY_DELAY"] = 0.1
+        f.write_text(json.dumps({"timers": []}))
+        sleeps = []
+        with mock.patch("builtins.open", _locked_open(f, PermissionError("locked"))),              mock.patch.object(namespace["time"], "sleep", sleeps.append):
+            namespace["_load_settings"]()
+        assert sleeps == pytest.approx([0.1, 0.2, 0.4, 0.8])
+        assert sum(sleeps) < 2.0                              # startup is never held up long
 
     def test_stat_failure_is_not_mistaken_for_missing_file(self, ns):
         namespace, f = ns
-        f.write_text(json.dumps({"timers": []}))
+        f.write_text(json.dumps({"timers": [{"title": "keep me", "duration": 600}]}))
         with mock.patch("os.path.getsize", side_effect=PermissionError("locked")):
-            namespace["_load_settings"]()
-        assert namespace["_settings_write_blocked"] is True
-        assert f.exists()
+            result = namespace["_load_settings"]()
+        # not treated as "first run" and silently ignored: the file is kept
+        assert f.with_name("settings.json.bak").exists()
+        assert result["timers"] == []
+
+    def test_utf8_bom_file_loads_instead_of_being_called_corrupt(self, ns):
+        namespace, f = ns
+        f.write_bytes(codecs.BOM_UTF8 + json.dumps(
+            {"timers": [{"title": "Bread", "duration": 600}]}).encode("utf-8"))
+        result = namespace["_load_settings"]()
+        assert result["timers"][0]["title"] == "Bread"
+        assert not f.with_name("settings.json.bak").exists()
 
     def test_missing_file_does_not_block_saving(self, ns):
         namespace, f = ns

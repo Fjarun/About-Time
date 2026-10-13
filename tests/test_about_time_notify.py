@@ -17,6 +17,8 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 import types
 from pathlib import Path
 
@@ -331,6 +333,149 @@ class TestToastFailureLogged:
         assert len(notify_env["_ps_calls"]) == 1
 
 
+class _FakeProc:
+    """Stands in for a finished subprocess.Popen."""
+    def __init__(self, returncode=0, stderr="", hang_first=False):
+        self.returncode = returncode
+        self._stderr = stderr
+        self._hang = hang_first
+        self.killed = False
+        self.communicate_calls = []
+
+    def communicate(self, timeout=None):
+        self.communicate_calls.append(timeout)
+        if self._hang and timeout is not None:
+            self._hang = False
+            raise subprocess.TimeoutExpired("powershell", timeout)
+        return (None, self._stderr)
+
+    def kill(self):
+        self.killed = True
+
+
+class TestToastOutcomeIsObserved:
+    """Toast failures after PowerShell launched (script error, bad exit code)
+    used to disappear: the child's output went to DEVNULL and nothing ever
+    read its exit status. The watcher logs them without touching the script."""
+
+    @pytest.fixture()
+    def watch(self, notify_env):
+        logged = []
+        notify_env["_log_error"] = logged.append
+        notify_env["_logged"] = logged
+        return notify_env
+
+    def test_clean_exit_logs_nothing(self, watch):
+        watch["_watch_toast"](_FakeProc(0, ""))
+        assert watch["_logged"] == []
+
+    def test_non_zero_exit_is_logged_with_its_error_text(self, watch):
+        watch["_watch_toast"](_FakeProc(1, "Exception calling LoadXml: bad xml"))
+        assert len(watch["_logged"]) == 1
+        assert "exited 1" in watch["_logged"][0]
+        assert "bad xml" in watch["_logged"][0]
+
+    def test_error_text_with_a_zero_exit_is_still_logged(self, watch):
+        # PowerShell non-terminating errors print to stderr and still exit 0.
+        watch["_watch_toast"](_FakeProc(0, "some non-terminating error"))
+        assert len(watch["_logged"]) == 1
+        assert "some non-terminating error" in watch["_logged"][0]
+
+    def test_whitespace_only_stderr_is_not_an_error(self, watch):
+        watch["_watch_toast"](_FakeProc(0, "   "))
+        assert watch["_logged"] == []
+
+    def test_error_text_is_truncated(self, watch):
+        watch["_watch_toast"](_FakeProc(1, "x" * 5000))
+        assert len(watch["_logged"][0]) < 400
+
+    def test_a_hung_script_is_stopped_and_logged(self, watch):
+        proc = _FakeProc(0, "", hang_first=True)
+        watch["_watch_toast"](proc)
+        assert proc.killed is True
+        assert any("did not finish" in m for m in watch["_logged"])
+
+    def test_no_process_is_a_noop(self, watch):
+        watch["_watch_toast"](None)          # launch failed earlier and was already logged
+        assert watch["_logged"] == []
+
+    def test_notify_logs_a_failed_toast_end_to_end(self, notify_env):
+        logged = []
+        notify_env["_log_error"] = logged.append
+        notify_env["_run_toast_script"] = lambda script: _FakeProc(1, "toast blew up")
+        notify_env["notify"]("Laundry", "25:00")
+        assert len(logged) == 1
+        assert "toast blew up" in logged[0]
+
+    def test_notify_stays_quiet_when_the_toast_succeeds(self, notify_env):
+        logged = []
+        notify_env["_log_error"] = logged.append
+        notify_env["_run_toast_script"] = lambda script: _FakeProc(0, "")
+        notify_env["notify"]("Laundry", "25:00")
+        assert logged == []
+
+    def test_launch_pipes_stderr_only_and_returns_the_process(self, monkeypatch):
+        seen = {}
+
+        class _FakeSI:
+            dwFlags = 0
+
+        sentinel = object()
+        def fake_popen(cmd, **kw):
+            seen.update(kw)
+            return sentinel
+
+        monkeypatch.setattr(subprocess, "STARTUPINFO", _FakeSI, raising=False)
+        monkeypatch.setattr(subprocess, "STARTF_USESHOWWINDOW", 1, raising=False)
+        monkeypatch.setattr(subprocess, "Popen", fake_popen)
+        match = re.search(r"(^def _run_toast_script\(script\):.*?)(?=^def _system_windows_dir)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        ns = {"os": os, "subprocess": subprocess}
+        exec(match.group(1), ns)
+        ns["_system_windows_dir"] = lambda: r"C:\Windows"
+        assert ns["_run_toast_script"]("echo hi") is sentinel
+        assert seen["stderr"] == subprocess.PIPE
+        assert seen["stdout"] == subprocess.DEVNULL
+        assert seen["stdin"] == subprocess.DEVNULL
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="runs real PowerShell")
+class TestToastOutcomeRealPowerShell:
+    """No fakes: the real launch and the real watcher against real PowerShell."""
+
+    @pytest.fixture()
+    def real(self):
+        match = re.search(
+            r"(^_TOAST_WAIT_SECONDS = .*?)(?=^def notify)",
+            SOURCE, re.DOTALL | re.MULTILINE,
+        )
+        assert match, "toast watcher not found in source"
+        logged = []
+        ns = {"__builtins__": __builtins__, "os": os, "subprocess": subprocess,
+              "_log_error": logged.append}
+        # _toast_safe and friends are not needed here; only the launch + watcher
+        src = re.search(r"(^def _run_toast_script\(script\):.*?)(?=^def _system_windows_dir)",
+                        SOURCE, re.DOTALL | re.MULTILINE).group(1)
+        sysdir = re.search(r"(^def _system_windows_dir\(\):.*?)(?=^def notify)",
+                           SOURCE, re.DOTALL | re.MULTILINE).group(1)
+        exec(match.group(1), ns)
+        exec(src, ns)
+        exec(sysdir, ns)
+        ns["_logged"] = logged
+        return ns
+
+    def test_a_script_that_throws_is_logged(self, real):
+        proc = real["_run_toast_script"]("throw 'toast-script-boom'")
+        real["_watch_toast"](proc)
+        assert len(real["_logged"]) == 1
+        assert "toast-script-boom" in real["_logged"][0]
+
+    def test_a_script_that_succeeds_logs_nothing(self, real):
+        proc = real["_run_toast_script"]("$x = 1")
+        real["_watch_toast"](proc)
+        assert real["_logged"] == []
+
+
 class TestLogTkException:
     """A3: Tk callback exceptions are routed to _log_error on a single line."""
 
@@ -369,7 +514,7 @@ class TestLogErrorFlattensNewlines:
     def test_multiline_message_is_one_log_line(self, tmp_path, monkeypatch):
         match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
                           SOURCE, re.DOTALL | re.MULTILINE)
-        ns = {"os": os, "sys": sys, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        ns = {"os": os, "sys": sys, "threading": threading, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
         exec(match.group(1), ns)
         ns["_log_error"]("real line\n2026-01-01T00:00:00 FAKE entry\r\nthird")
         lines = (tmp_path / "error.log").read_text(encoding="utf-8").splitlines()
@@ -379,10 +524,72 @@ class TestLogErrorFlattensNewlines:
     def test_single_line_message_unchanged(self, tmp_path):
         match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
                           SOURCE, re.DOTALL | re.MULTILINE)
-        ns = {"os": os, "sys": sys, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        ns = {"os": os, "sys": sys, "threading": threading, "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
         exec(match.group(1), ns)
         ns["_log_error"]("plain")
         assert (tmp_path / "error.log").read_text(encoding="utf-8").strip().endswith("plain")
+
+
+class TestLogErrorHardening:
+    """L4: control characters are dropped from log lines, and writers take
+    turns so rotation and append cannot race between worker threads."""
+
+    @pytest.fixture()
+    def log(self, tmp_path):
+        match = re.search(r"(^def _log_error\(message\):.*?)(?=^def _clip_title)",
+                          SOURCE, re.DOTALL | re.MULTILINE)
+        ns = {"os": os, "sys": sys, "threading": threading,
+              "_SETTINGS_PATH": str(tmp_path / "settings.json"), "_MAX_LOG_BYTES": 10**6}
+        exec(match.group(1), ns)
+        ns["_path"] = tmp_path / "error.log"
+        return ns
+
+    def test_ansi_escapes_and_other_controls_are_dropped(self, log):
+        esc = chr(27)
+        log["_log_error"]("before" + esc + "[31mRED" + esc + "[0m" + chr(0) + chr(7) + chr(8) + chr(127) + "after")
+        line = log["_path"].read_text(encoding="utf-8")
+        for bad in (esc, chr(0), chr(7), chr(8), chr(127)):
+            assert bad not in line
+        assert "before[31mRED[0mafter" in line
+
+    def test_tab_and_normal_unicode_survive(self, log):
+        text = "caf" + chr(233) + " " + chr(0x2713) + " a" + chr(9) + "b"
+        log["_log_error"](text)
+        assert text in log["_path"].read_text(encoding="utf-8")
+
+    def test_still_one_line_per_message(self, log):
+        log["_log_error"]("one" + chr(27) + chr(10) + "two")
+        assert len(log["_path"].read_text(encoding="utf-8").splitlines()) == 1
+
+    def test_writers_never_overlap_inside_the_append(self, log):
+        # A fake open that dawdles while recording how many writers are inside
+        # it at once. Without the lock several threads are inside together.
+        inside = {"now": 0, "max": 0}
+        guard = threading.Lock()
+        real_open = open
+
+        class _SlowFile:
+            def __init__(self, f):
+                self._f = f
+            def __enter__(self):
+                with guard:
+                    inside["now"] += 1
+                    inside["max"] = max(inside["max"], inside["now"])
+                time.sleep(0.01)
+                return self._f.__enter__()
+            def __exit__(self, *a):
+                with guard:
+                    inside["now"] -= 1
+                return self._f.__exit__(*a)
+
+        log["open"] = lambda *a, **k: _SlowFile(real_open(*a, **k))
+        threads = [threading.Thread(target=log["_log_error"], args=("msg " + str(i),)) for i in range(8)]
+        for t_ in threads:
+            t_.start()
+        for t_ in threads:
+            t_.join(10)
+        assert inside["max"] == 1
+        assert len(log["_path"].read_text(encoding="utf-8").splitlines()) == 8
 
 
 # ---------------------------------------------------------------------------

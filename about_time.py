@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import threading
+import time
 import sys
 import re
 import json
@@ -8,7 +9,7 @@ import base64
 import subprocess
 import traceback
 
-__version__ = "0.12.0"
+__version__ = "0.12.1"
 
 # ── Platform sound ─────────────────────────────────────────────────────────────
 _WAVS = {}
@@ -17,6 +18,7 @@ _wav_lock = threading.Lock()
 if sys.platform == "win32":
     from winotify import Notification
     from winotify import TEMPLATE as _TOAST_TEMPLATE
+    import comtypes
     from pycaw.pycaw import AudioUtilities
     import winsound, struct, math
 
@@ -65,7 +67,12 @@ if sys.platform == "win32":
             _WAVS["long"]   = long_
 
     def _play(wav):
-        winsound.PlaySound(wav, winsound.SND_MEMORY)
+        # Runs on a bare worker thread, where an uncaught exception goes to
+        # stderr only (invisible in the windowed exe), so log it instead.
+        try:
+            winsound.PlaySound(wav, winsound.SND_MEMORY)
+        except Exception as e:
+            _log_error(f"_play failed: {e}")
 
     def _find_own_audio_session():
         """The Windows audio session for this process, if one exists yet —
@@ -115,9 +122,26 @@ if sys.platform == "win32":
         audible has a chance to play."""
         silent = _wrap_wav(_apply_reverb(_sine_segment(880, 0.05, 0.05, volume=0.0001)))
         def _run():
-            winsound.PlaySound(silent, winsound.SND_MEMORY)
-            if first_boot_volume is not None:
+            try:
+                winsound.PlaySound(silent, winsound.SND_MEMORY)
+            except Exception as e:
+                # Not fatal for the cap: with no session _set_app_volume is a no-op.
+                _log_error(f"_prime_audio_session could not play the priming sound: {e}")
+            if first_boot_volume is None:
+                return
+            # pycaw is COM, and COM has to be initialised once per thread. The
+            # main thread gets that for free; this worker does not, so without
+            # it every call below fails ("CoInitialize has not been called"),
+            # is swallowed by _set_app_volume, and the cap silently never applies.
+            try:
+                comtypes.CoInitialize()
+            except Exception as e:
+                _log_error(f"_prime_audio_session could not initialise COM: {e}")
+                return
+            try:
                 _set_app_volume(first_boot_volume)
+            finally:
+                comtypes.CoUninitialize()
         threading.Thread(target=_run, daemon=True).start()
 else:
     def _build_wavs():
@@ -176,11 +200,16 @@ def _is_int(value):
 MAX_TITLE_LEN = 100
 _MAX_SETTINGS_BYTES = 256 * 1024
 _MAX_LOG_BYTES = 256 * 1024
+# A settings file that is briefly locked (cloud sync, antivirus scan) usually
+# frees up within a second, so reading is retried with a doubling delay before
+# the file is treated as unreadable: 0.1 + 0.2 + 0.4 + 0.8 s, about 1.5 s at worst.
+_READ_ATTEMPTS = 5
+_READ_RETRY_DELAY = 0.1
 
-# Set when the settings file could not be read, or an unreadable one could not
-# be moved aside. While set, _save_settings leaves the file alone so a valid
-# file behind a temporary lock (Proton Drive, antivirus) is never overwritten
-# with defaults. Lasts for the session.
+# Set when an unreadable or corrupt settings file could not be moved aside.
+# While set, _save_settings leaves the file alone so a valid file behind a
+# stubborn lock (Proton Drive, antivirus) is never overwritten with defaults.
+# Lasts for the session.
 _settings_write_blocked = False
 
 def _log_error(message):
@@ -188,17 +217,27 @@ def _log_error(message):
     log next to settings.json. Capped: past _MAX_LOG_BYTES the old log is
     replaced by a fresh one. Logging must never itself raise."""
     message = " | ".join(message.splitlines()) or message
+    message = message.translate(_LOG_STRIP)
     print(f"[About Time] {message}", file=sys.stderr)
     try:
         log_path = os.path.join(os.path.dirname(_SETTINGS_PATH), "error.log")
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
-        if os.path.exists(log_path) and os.path.getsize(log_path) > _MAX_LOG_BYTES:
-            os.replace(log_path, log_path + ".old")
         from datetime import datetime
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now().isoformat(timespec='seconds')} {message}\n")
+        # Several worker threads (chime, toast, priming) can log at once; one
+        # at a time keeps the size check, rotation and append from racing.
+        with _log_lock:
+            if os.path.exists(log_path) and os.path.getsize(log_path) > _MAX_LOG_BYTES:
+                os.replace(log_path, log_path + ".old")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.now().isoformat(timespec='seconds')} {message}\n")
     except Exception:
         pass
+
+# Control characters other than tab (ANSI escapes, NUL, bell, backspace) are
+# dropped from log lines so a title or error text cannot dress up the log.
+# Line breaks are already flattened above.
+_LOG_STRIP = {c: None for c in (*range(0, 9), *range(11, 32), 127)}
+_log_lock = threading.Lock()
 
 def _clip_title(title):
     return title[:MAX_TITLE_LEN]
@@ -221,6 +260,27 @@ def _backup_corrupt_settings():
         _log_error(f"could not back up unreadable settings file: {e}")
         return False
 
+def _read_settings_text():
+    """The settings file's text, retrying transient OS errors. A missing file
+    (FileNotFoundError) or an oversize one (ValueError) is not retried, and the
+    last OSError is re-raised once the attempts run out. utf-8-sig reads the
+    same as utf-8 but also accepts a leading BOM, which some editors add."""
+    delay = _READ_RETRY_DELAY
+    for attempt in range(_READ_ATTEMPTS):
+        try:
+            size = os.path.getsize(_SETTINGS_PATH)
+            if size > _MAX_SETTINGS_BYTES:
+                raise ValueError(f"settings file larger than {_MAX_SETTINGS_BYTES} bytes")
+            with open(_SETTINGS_PATH, encoding="utf-8-sig") as f:
+                return f.read()
+        except FileNotFoundError:
+            raise
+        except OSError:
+            if attempt == _READ_ATTEMPTS - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
+
 def _load_settings():
     global _settings_write_blocked
     defaults = {"pinned": False, "layout_mode": "stack", "muted": False,
@@ -229,13 +289,10 @@ def _load_settings():
         # Only a genuinely missing file means "first run". Any other stat
         # failure (e.g. a lock) is an OSError handled below, not "no file".
         try:
-            size = os.path.getsize(_SETTINGS_PATH)
+            text = _read_settings_text()
         except FileNotFoundError:
             return defaults
-        if size > _MAX_SETTINGS_BYTES:
-            raise ValueError(f"settings file larger than {_MAX_SETTINGS_BYTES} bytes")
-        with open(_SETTINGS_PATH) as f:
-            data = json.load(f)
+        data = json.loads(text)
         if not isinstance(data, dict):
             raise ValueError("settings root is not an object")
         # Migration from the pre-per-timer-sound settings format: the old
@@ -310,10 +367,14 @@ def _load_settings():
             "timers":        timer_data,
         }
     except OSError as e:
-        # Could not read the file at all (lock, permissions, I/O). It may be
-        # perfectly valid, so don't move it and don't save over it this session.
-        _log_error(f"_load_settings could not read settings, leaving the file untouched and not saving this session: {e}")
-        _settings_write_blocked = True
+        # Still unreadable after the retries (lock, permissions, I/O). Treated
+        # like a corrupt file: kept as settings.json.bak, nothing is lost, and
+        # the app starts fresh. Only if it cannot even be moved aside is it left
+        # exactly where it is and saving disabled for the session, so a valid
+        # file behind a stubborn lock is never overwritten with defaults.
+        _log_error(f"_load_settings could not read settings after {_READ_ATTEMPTS} attempts: {e}")
+        if not _backup_corrupt_settings():
+            _settings_write_blocked = True
         return defaults
     except Exception as e:
         _log_error(f"_load_settings failed: {e}")
@@ -378,21 +439,27 @@ def _toast_safe(text):
     text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]", "", text)
     return text.replace("]]>", "] ] >").strip()
 
+# How long a toast script may run before it is treated as hung and stopped.
+# A normal one finishes in about a second.
+_TOAST_WAIT_SECONDS = 30
+
 def _run_toast_script(script):
-    """Runs the toast script through PowerShell located by absolute System32
+    """Starts the toast script in PowerShell, located by absolute System32
     path under the Windows directory the OS itself reports, not a PATH lookup
     or the SystemRoot environment variable, so neither a planted powershell.exe
-    nor a changed environment can redirect it."""
+    nor a changed environment can redirect it. Returns the process so the
+    caller can check how it went (see _watch_toast); only stderr is piped."""
     root = _system_windows_dir()
     if not (os.path.isabs(root) and os.path.isdir(root)):
         root = r"C:\Windows"
     ps = os.path.join(root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
     si = subprocess.STARTUPINFO()
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    subprocess.Popen(
+    return subprocess.Popen(
         [ps, "-NoProfile", "-Command", script],
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL, startupinfo=si,
+        stderr=subprocess.PIPE, startupinfo=si,
+        text=True, encoding="utf-8", errors="replace",
     )
 
 def _system_windows_dir():
@@ -404,6 +471,27 @@ def _system_windows_dir():
         return buf.value if 0 < n < 260 else ""
     except Exception:
         return ""
+
+def _watch_toast(proc):
+    """Waits for the toast's PowerShell process and logs a failed one. Meant
+    to run on the worker thread that launched it, never the Tk thread. This
+    only observes: the script itself is unchanged, so it cannot make a toast
+    that works today stop working. proc is None when the launch itself failed
+    (already logged by the caller)."""
+    if proc is None:
+        return
+    try:
+        _, err = proc.communicate(timeout=_TOAST_WAIT_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        _log_error(f"toast script did not finish within {_TOAST_WAIT_SECONDS} s and was stopped")
+        return
+    err = (err or "").strip()
+    # Non-terminating PowerShell errors print to stderr yet still exit 0, so
+    # either signal counts.
+    if proc.returncode != 0 or err:
+        _log_error(f"toast script exited {proc.returncode}: {err[:300]}")
 
 def notify(title, duration):
     """Shows a Windows toast when a timer finishes.
@@ -434,7 +522,7 @@ def notify(title, duration):
                 "$Msg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($MsgB64))\n"
                 + _TOAST_TEMPLATE.format(**toast.__dict__)
             )
-            _run_toast_script(script)
+            _watch_toast(_run_toast_script(script))
         except Exception as exc:
             # Runs on a daemon thread, where an exception would otherwise
             # vanish silently and the user just never sees the toast.
@@ -648,6 +736,11 @@ class TimerWidget(ctk.CTkFrame):
         self.after_id = None
         self.editing_countdown = False
         self.edit_var = ctk.StringVar()
+        self._edit_seed = None   # the text the edit box opened with
+        # Wall-clock reference for the countdown (see _tick). Overridable so
+        # tests can drive time without sleeping.
+        self._clock = time.time
+        self._anchor = None
         # Restore mid-run timers as paused; treat finished as idle
         restore_paused = (initial_state in ("running", "paused")
                           and initial_remaining is not None and initial_remaining > 0)
@@ -858,7 +951,20 @@ class TimerWidget(ctk.CTkFrame):
         if self.state != "running":
             self.after_id = None
             return
-        self.remaining_seconds -= 1
+        # Count the time that really passed, not the number of callbacks. A
+        # callback that runs late (busy UI, slow machine) or a sleeping PC used
+        # to lose all the time in between, because exactly one second was taken
+        # off per tick. _anchor is the moment remaining_seconds was last in
+        # step with the clock; it advances by whole seconds, so lateness never
+        # accumulates into drift. A tick with no measurable elapsed time still
+        # counts as one second, and a clock set backwards resyncs without
+        # adding time back.
+        now = self._clock()
+        if self._anchor is None or now < self._anchor:
+            self._anchor = now - 1.0
+        steps = max(1, int(now - self._anchor + 0.05))
+        self._anchor += steps
+        self.remaining_seconds -= steps
         if self.remaining_seconds <= 0:
             self.remaining_seconds = 0
             self.after_id = None
@@ -870,22 +976,40 @@ class TimerWidget(ctk.CTkFrame):
                 notify(_title if _title != _TITLE_PLACEHOLDER else "", self.last_valid_display)
         else:
             self.display_var.set(fmt(self.remaining_seconds))
-            self.after_id = root.after(1000, self._tick)
+            # next tick lands on the next whole second after the anchor
+            delay = int((self._anchor + 1 - now) * 1000)
+            self.after_id = root.after(max(1, min(1000, delay)), self._tick)
 
     # ── Actions ────────────────────────────────────────────────────────────────
+    def _drop_unchanged_edit(self, discard_typing=False):
+        """Closes an open countdown edit box. Start/Pause/Resume/Restart/Stop
+        change what the countdown shows, so a box left open would keep
+        displaying the stale time it opened with. By default only a box
+        nothing was typed into is closed; a real change is left alone, as
+        before. Restart passes discard_typing: pressing it means "I am not
+        editing", so whatever was typed is thrown away too and the timer goes
+        back to the last time that was actually entered."""
+        if self.editing_countdown and (discard_typing or self.edit_var.get() == self._edit_seed):
+            self.editing_countdown = False
+            self.countdown_entry.pack_forget()
+            self.countdown_label.pack(padx=8, pady=1)
+
     def _start_running(self):
         self.remaining_seconds = self.duration_seconds
         self.display_var.set(fmt(self.remaining_seconds))
         self._set_state("running")
+        self._anchor = self._clock()
         self.after_id = root.after(1000, self._tick)
 
     def _do_start(self):
+        self._drop_unchanged_edit()
         if parse_input(self.display_var.get()) is None:
             self.flash_invalid()
             return
         self._start_running()
 
     def _do_stop(self):
+        self._drop_unchanged_edit()
         if self.after_id:
             root.after_cancel(self.after_id)
             self.after_id = None
@@ -897,10 +1021,13 @@ class TimerWidget(ctk.CTkFrame):
             self._set_state("idle")
 
     def _do_resume(self):
+        self._drop_unchanged_edit()
         self._set_state("running")
+        self._anchor = self._clock()
         self.after_id = root.after(1000, self._tick)
 
     def _do_restart(self):
+        self._drop_unchanged_edit(discard_typing=True)
         if self.after_id:
             root.after_cancel(self.after_id)
             self.after_id = None
@@ -951,12 +1078,23 @@ class TimerWidget(ctk.CTkFrame):
         if self.editing_countdown:
             return
         self.editing_countdown = True
-        self.edit_var.set(self.last_valid_display if self.state == "finished" else self.display_var.get())
+        self._edit_seed = self.last_valid_display if self.state == "finished" else self.display_var.get()
+        self.edit_var.set(self._edit_seed)
         self.countdown_label.pack_forget()
         self.countdown_entry.pack(padx=8, pady=1)
         _fit_window()
         self.countdown_entry.focus()
         self.countdown_entry.after(10, lambda: self.countdown_entry.select_range(0, "end"))
+
+    def _show_current_time(self):
+        """Puts back whatever the countdown shows for the current state
+        (used when an edit is rejected or was never changed)."""
+        if self.state in ("running", "paused"):
+            self.display_var.set(fmt(self.remaining_seconds))
+        elif self.state == "finished":
+            self.display_var.set("Done!")
+        else:
+            self.display_var.set(self.last_valid_display)
 
     def _commit_countdown(self, event=None):
         if not self.editing_countdown:
@@ -967,13 +1105,15 @@ class TimerWidget(ctk.CTkFrame):
         self.countdown_entry.pack_forget()
         self.countdown_label.pack(padx=8, pady=1)
         _fit_window()
+        if text == self._edit_seed:
+            # Clicked in and away again without changing anything: whatever the
+            # timer was doing, leave it exactly as it is. Treating the seeded
+            # text as a new input used to overwrite the configured duration with
+            # the remaining time, un-pause a paused timer and start an idle one.
+            self._show_current_time()
+            return
         if seconds is None:
-            if self.state in ("running", "paused"):
-                self.display_var.set(fmt(self.remaining_seconds))
-            elif self.state == "finished":
-                self.display_var.set("Done!")
-            else:
-                self.display_var.set(self.last_valid_display)
+            self._show_current_time()
             return
         self.duration_seconds = seconds
         self.remaining_seconds = seconds
@@ -984,6 +1124,7 @@ class TimerWidget(ctk.CTkFrame):
                 root.after_cancel(self.after_id)
                 self.after_id = None
             self._set_state("running")
+            self._anchor = self._clock()
             self.after_id = root.after(1000, self._tick)
 
     def _on_entry_return(self, event=None):
@@ -1079,8 +1220,19 @@ def _fit_window():
     every timer/box is fixed-size and always fully shown, so there's
     nothing for the user to drag-resize into."""
     root.update_idletasks()
-    w = root.winfo_reqwidth()
-    h = root.winfo_reqheight()
+    # winfo_req* are real pixels, already multiplied by CustomTkinter's display
+    # scaling, but root.minsize/maxsize/geometry multiply their arguments by it
+    # again. Passing real pixels straight in squares the scaling at any display
+    # scaling other than 100% (window far bigger than its contents), so convert
+    # back to unscaled units first, rounding up so no pixel of content is lost.
+    scale = ctk.ScalingTracker.get_window_scaling(root)
+    def unscaled(px):
+        n = int(px / scale)
+        while int(n * scale) < px:
+            n += 1
+        return n
+    w = unscaled(root.winfo_reqwidth())
+    h = unscaled(root.winfo_reqheight())
     root.minsize(w, h)
     root.maxsize(w, h)
     root.geometry(f"{w}x{h}")
@@ -1382,6 +1534,85 @@ _update_pin()
 _update_mute_btn()
 _update_layout_btn()
 
+# ── Keeping the restored window reachable ─────────────────────────────────────
+# The window can only be dragged by its title bar (its edges are not resize
+# handles, the size is pinned), so a saved position is only trusted if enough
+# of the title bar is really on screen to grab. An unplugged monitor, a
+# hand-edited value or a position saved while minimised (Windows reports
+# -32000,-32000) would otherwise leave an always-on-top window nobody can move.
+# (x, y) is the window's OUTER frame corner, so the title bar is the top
+# _TITLE_BAR_H pixels (caption + frame, 31 px at 100% display scaling).
+_TITLE_BAR_H = 31
+_BAR_PROBE_W = 100                        # how much of the bar's left end is considered
+_MIN_BAR_W = 40                           # at least this much of that must be on screen
+_MIN_BAR_FRACTION = 0.6                   # and at least this fraction of the bar's height
+_ROOM_W, _ROOM_H = 260, 170               # a recovered window gets about one timer's room
+
+def _place_on_screen(x, y, monitors, title_h=_TITLE_BAR_H):
+    """(x, y) if enough of the title bar is within a monitor's work area to
+    grab, otherwise the nearest position that does, inside the nearest
+    monitor's work area (so never under the taskbar). monitors is a list of
+    ((left, top, right, bottom) monitor, (l, t, r, b) work area); an empty
+    list means they could not be queried, and the position is kept as is.
+    title_h is the title bar height in pixels at the current display scaling."""
+    if not monitors:
+        return x, y
+    need_h = max(1, int(title_h * _MIN_BAR_FRACTION))
+    for _mon, work in monitors:
+        overlap_w = min(x + _BAR_PROBE_W, work[2]) - max(x, work[0])
+        overlap_h = min(y + title_h, work[3]) - max(y, work[1])
+        if overlap_w >= _MIN_BAR_W and overlap_h >= need_h:
+            return x, y
+    cx, cy = x + _BAR_PROBE_W / 2, y + title_h / 2
+    def gap(monitor):
+        work = monitor[1]
+        dx = max(work[0] - cx, 0, cx - work[2])
+        dy = max(work[1] - cy, 0, cy - work[3])
+        return dx * dx + dy * dy
+    work = min(monitors, key=gap)[1]
+    new_x = min(max(x, work[0]), work[2] - _ROOM_W)
+    new_y = min(max(y, work[1]), work[3] - _ROOM_H)
+    return max(new_x, work[0]), max(new_y, work[1])
+
+def _monitor_rects():
+    """Every monitor as ((l, t, r, b), (l, t, r, b) work area) in the same
+    pixel space Tk positions windows in. [] if they cannot be listed, which
+    leaves the saved position alone."""
+    if sys.platform != "win32":
+        return []
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.WinDLL("user32", use_last_error=True)   # private copy: its argtypes stay ours
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                        ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+        enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC,
+                                       ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+        user32.EnumDisplayMonitors.argtypes = [wintypes.HDC, ctypes.POINTER(wintypes.RECT),
+                                               enum_proc, wintypes.LPARAM]
+        user32.EnumDisplayMonitors.restype = wintypes.BOOL
+        user32.GetMonitorInfoW.argtypes = [wintypes.HMONITOR, ctypes.POINTER(MONITORINFO)]
+        user32.GetMonitorInfoW.restype = wintypes.BOOL
+
+        found = []
+        def _collect(hmonitor, _hdc, _rect, _lparam):
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            if user32.GetMonitorInfoW(hmonitor, ctypes.byref(info)):
+                m, w = info.rcMonitor, info.rcWork
+                found.append(((m.left, m.top, m.right, m.bottom),
+                              (w.left, w.top, w.right, w.bottom)))
+            return True
+        callback = enum_proc(_collect)   # keep a reference for the duration of the call
+        user32.EnumDisplayMonitors(None, None, callback, 0)
+        return found
+    except Exception as e:
+        _log_error(f"_monitor_rects failed: {e}")
+        return []
+
 # Restore window position before loading timers — add_timer() below triggers
 # an incidental _save_settings() per timer, which would otherwise capture
 # the window's default startup position and briefly overwrite the real
@@ -1389,6 +1620,9 @@ _update_layout_btn()
 # Loose bounds allow multi-monitor layouts (negative or large x/y).
 if _win_x is not None and _win_y is not None:
     if -32000 <= _win_x <= 32000 and -32000 <= _win_y <= 32000:
+        _win_x, _win_y = _place_on_screen(
+            _win_x, _win_y, _monitor_rects(),
+            round(_TITLE_BAR_H * ctk.ScalingTracker.get_window_scaling(root)))
         root.geometry(f"+{_win_x}+{_win_y}")
 
 if _first_boot:

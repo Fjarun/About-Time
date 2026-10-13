@@ -57,6 +57,7 @@ def _build_namespace(root, timers_frame, timers):
         "_TITLE_TEXT_COLOR": "#ffffff",
         # Unrelated side effects stubbed out — this suite is testing layout,
         # not settings persistence or the hover-tooltip widget.
+        "time": __import__("time"),
         "_save_settings": lambda: None,
         "_update_layout_btn": lambda: None,
         "_layout_tip": types.SimpleNamespace(winfo_ismapped=lambda: False),
@@ -385,6 +386,52 @@ class TestFitWindowRow:
         env["root"].update()
         # width should fit all 3 boxes, not just one
         assert env["root"].winfo_width() >= env["_timer_w"]() * 3
+
+
+class TestFitWindowDisplayScaling:
+    """root.minsize/maxsize/geometry multiply by the display scaling, while
+    winfo_req* already include it. Feeding real pixels straight in squared the
+    scaling (a 150% display asked for 225%), leaving a dead grey area."""
+
+    class _StubRoot:
+        def __init__(self, req_w, req_h):
+            self._req = (req_w, req_h)
+            self.calls = []
+        def update_idletasks(self): pass
+        def winfo_reqwidth(self): return self._req[0]
+        def winfo_reqheight(self): return self._req[1]
+        def minsize(self, w, h): self.calls.append(("minsize", w, h))
+        def maxsize(self, w, h): self.calls.append(("maxsize", w, h))
+        def geometry(self, g): self.calls.append(("geometry", g))
+
+    @pytest.mark.parametrize("scale, req, expected", [
+        (1.0, (240, 770), (240, 770)),       # 100%: untouched
+        (1.25, (300, 970), (240, 776)),
+        (1.5, (360, 1158), (240, 772)),
+        (2.0, (480, 1540), (240, 770)),
+    ])
+    def test_hands_ctk_unscaled_units(self, env, monkeypatch, scale, req, expected):
+        stub = self._StubRoot(*req)
+        env["root"] = stub
+        monkeypatch.setattr(ctk.ScalingTracker, "get_window_scaling",
+                            staticmethod(lambda window: scale))
+        env["_fit_window"]()
+        w, h = expected
+        assert stub.calls == [("minsize", w, h), ("maxsize", w, h), ("geometry", f"{w}x{h}")]
+
+    @pytest.mark.parametrize("scale", [1.0, 1.1, 1.25, 1.33, 1.5, 1.75, 2.0, 2.5])
+    def test_ctk_scaled_result_never_smaller_than_content(self, env, monkeypatch, scale):
+        # CustomTkinter truncates (int(value * scale)): the window may be a
+        # pixel larger than the content, never a pixel smaller.
+        req_w, req_h = 360, 1158
+        stub = self._StubRoot(req_w, req_h)
+        env["root"] = stub
+        monkeypatch.setattr(ctk.ScalingTracker, "get_window_scaling",
+                            staticmethod(lambda window: scale))
+        env["_fit_window"]()
+        _, w, h = stub.calls[0]
+        assert int(w * scale) >= req_w and int(h * scale) >= req_h
+        assert int(w * scale) - req_w <= int(scale) + 1
 
 
 class TestFitWindowStack:
@@ -807,6 +854,328 @@ class TestCommitCountdownAcceptance:
 
 
 # ---------------------------------------------------------------------------
+# Clicking into the countdown and away again WITHOUT changing the text must
+# be a no-op in every state: it used to overwrite the configured duration
+# with the remaining time, silently un-pause a paused timer and start an idle
+# one. Typing a different valid time keeps its existing behaviour.
+# ---------------------------------------------------------------------------
+
+class TestClickAwayWithoutEditing:
+    def _click_and_away(self, tw, typed=None):
+        tw._on_countdown_click()
+        if typed is not None:
+            tw.edit_var.set(typed)
+        tw._commit_countdown()
+
+    def _timer(self, env, state, duration=900, remaining=800):
+        tw = _add_timer(env)
+        tw.duration_seconds = duration
+        tw.remaining_seconds = remaining
+        tw.last_valid_display = env["fmt"](duration)
+        tw.display_var.set(env["fmt"](remaining))
+        tw._set_state(state)
+        if state == "running":
+            tw.after_id = env["root"].after(1000, tw._tick)
+        return tw
+
+    def _cleanup(self, env, tw):
+        if tw.after_id:
+            env["root"].after_cancel(tw.after_id)
+            tw.after_id = None
+
+    def test_running_timer_keeps_its_configured_duration(self, env):
+        tw = self._timer(env, "running")
+        self._click_and_away(tw)
+        assert tw.duration_seconds == 900          # was overwritten with 800
+        assert tw.remaining_seconds == 800
+        assert tw.state == "running"
+        self._cleanup(env, tw)
+
+    def test_running_timer_keeps_the_same_tick_chain(self, env):
+        tw = self._timer(env, "running")
+        before = tw.after_id
+        self._click_and_away(tw)
+        assert tw.after_id == before               # not cancelled and re-armed
+        self._cleanup(env, tw)
+
+    def test_seconds_spent_with_the_box_open_are_not_given_back(self, env):
+        tw = self._timer(env, "running", remaining=800)
+        tw._on_countdown_click()
+        for _ in range(30):                        # 30 s pass while the box is open
+            tw._tick()
+        tw._commit_countdown()
+        assert tw.remaining_seconds == 770         # used to snap back to 800
+        self._cleanup(env, tw)
+
+    def test_paused_timer_stays_paused(self, env):
+        tw = self._timer(env, "paused", remaining=300)
+        self._click_and_away(tw)
+        assert tw.state == "paused"                # was un-paused
+        assert tw.after_id is None
+        assert tw.duration_seconds == 900
+        assert tw.remaining_seconds == 300
+
+    def test_finished_timer_stays_finished_and_still_says_done(self, env):
+        tw = self._timer(env, "finished", remaining=0)
+        tw.display_var.set("Done!")
+        self._click_and_away(tw)
+        assert tw.state == "finished"
+        assert tw.display_var.get() == "Done!"
+        assert tw.remaining_seconds == 0
+        assert tw.duration_seconds == 900
+
+    def test_retyping_the_same_text_counts_as_no_edit(self, env):
+        tw = self._timer(env, "running", remaining=540)
+        self._click_and_away(tw, typed=env["fmt"](540))
+        assert tw.duration_seconds == 900
+        self._cleanup(env, tw)
+
+    def test_idle_timer_click_away_without_editing_stays_idle(self, env):
+        # Decided 13/10/26: clicking in and away must never change anything,
+        # so an idle timer is not started either. Typing a time still arms it.
+        tw = self._timer(env, "idle", remaining=900)
+        self._click_and_away(tw)
+        assert tw.state == "idle"
+        assert tw.after_id is None
+        assert tw.duration_seconds == 900
+        assert tw.display_var.get() == "15:00"
+
+    def test_typing_a_time_on_an_idle_timer_still_arms_it(self, env):
+        tw = self._timer(env, "idle", remaining=900)
+        self._click_and_away(tw, typed="5:00")
+        assert tw.state == "running"
+        assert tw.duration_seconds == 300
+        self._cleanup(env, tw)
+
+    def test_a_changed_time_on_a_running_timer_still_applies(self, env):
+        tw = self._timer(env, "running")
+        self._click_and_away(tw, typed="5:00")
+        assert tw.duration_seconds == 300
+        assert tw.remaining_seconds == 300
+        assert tw.state == "running"
+        self._cleanup(env, tw)
+
+    def test_a_changed_time_on_a_paused_timer_still_applies(self, env):
+        tw = self._timer(env, "paused", remaining=300)
+        self._click_and_away(tw, typed="2:00")
+        assert tw.duration_seconds == 120
+        assert tw.state == "running"
+        self._cleanup(env, tw)
+
+    @pytest.mark.parametrize("state", ["running", "paused", "idle"])
+    def test_gibberish_never_changes_the_state(self, env, state):
+        tw = self._timer(env, state, remaining=800 if state != "idle" else 900)
+        before = (tw.state, tw.remaining_seconds, tw.duration_seconds)
+        self._click_and_away(tw, typed="abc")
+        assert (tw.state, tw.remaining_seconds, tw.duration_seconds) == before
+        self._cleanup(env, tw)
+
+
+class TestTransportButtonsWhileEditOpen:
+    """Pressing Restart (or any transport button) with the countdown box open
+    and untouched: the box used to stay open showing the stale time, and
+    clicking away then committed that stale text as a new duration."""
+
+    def _open_edit(self, env, state, remaining, duration=900):
+        tw = _add_timer(env)
+        tw.duration_seconds = duration
+        tw.remaining_seconds = remaining
+        tw.last_valid_display = env["fmt"](duration)
+        tw.display_var.set(env["fmt"](remaining))
+        tw._set_state(state)
+        if state == "running":
+            tw.after_id = env["root"].after(1000, tw._tick)
+        tw._on_countdown_click()
+        return tw
+
+    def _cleanup(self, env, tw):
+        if tw.after_id:
+            env["root"].after_cancel(tw.after_id)
+            tw.after_id = None
+
+    @pytest.mark.parametrize("state, remaining", [("running", 895), ("paused", 780)])
+    def test_restart_then_click_away_keeps_the_configured_duration(self, env, state, remaining):
+        tw = self._open_edit(env, state, remaining)
+        tw._do_restart()
+        tw._commit_countdown()                       # the click away
+        assert tw.duration_seconds == 900            # was overwritten with the old remaining
+        assert tw.remaining_seconds == 900
+        assert tw.state == "running"
+        assert tw.display_var.get() == "15:00"
+        self._cleanup(env, tw)
+
+    @pytest.mark.parametrize("state, remaining", [("running", 895), ("paused", 780)])
+    def test_restart_closes_the_untouched_box_so_it_cannot_show_a_stale_time(self, env, state, remaining):
+        tw = self._open_edit(env, state, remaining)
+        assert tw.countdown_entry.winfo_manager()    # box is open
+        tw._do_restart()
+        assert tw.editing_countdown is False
+        assert not tw.countdown_entry.winfo_manager()
+        assert tw.countdown_label.winfo_manager()
+        self._cleanup(env, tw)
+
+    def test_pause_resume_and_stop_also_close_an_untouched_box(self, env):
+        tw = self._open_edit(env, "running", 800)
+        tw._do_stop()                                # pause
+        assert tw.editing_countdown is False and tw.state == "paused"
+        tw._on_countdown_click()
+        tw._do_resume()
+        assert tw.editing_countdown is False and tw.state == "running"
+        self._cleanup(env, tw)
+
+    def test_start_on_an_idle_timer_closes_the_box_and_starts_once(self, env):
+        tw = self._open_edit(env, "idle", 900)
+        tw._do_start()
+        assert tw.editing_countdown is False
+        assert tw.state == "running"
+        first_chain = tw.after_id
+        tw._commit_countdown()                       # a late focus-out must change nothing
+        assert tw.after_id == first_chain            # still the one tick chain
+        self._cleanup(env, tw)
+
+    def test_restart_discards_typed_text_and_goes_back_to_the_entered_time(self, env):
+        # Restart means "I am not editing": whatever was half-typed is thrown
+        # away and the timer restarts from the last time actually entered.
+        tw = self._open_edit(env, "paused", 780)
+        tw.edit_var.set("5:00")                      # typed, never confirmed
+        tw._do_restart()
+        assert tw.editing_countdown is False
+        assert not tw.countdown_entry.winfo_manager()
+        assert tw.duration_seconds == 900
+        assert tw.remaining_seconds == 900
+        assert tw.state == "running"
+        tw._commit_countdown()                       # a late focus-out must not apply "5:00"
+        assert tw.duration_seconds == 900
+        assert tw.remaining_seconds == 900
+        self._cleanup(env, tw)
+
+    def test_other_buttons_leave_a_box_with_a_real_change_open(self, env):
+        tw = self._open_edit(env, "paused", 780)
+        tw.edit_var.set("5:00")
+        tw._do_resume()
+        assert tw.editing_countdown is True
+        assert tw.edit_var.get() == "5:00"
+        self._cleanup(env, tw)
+
+
+class _FakeClock:
+    def __init__(self, start=1_000_000.0):
+        self.now = start
+    def __call__(self):
+        return self.now
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class TestTimerFollowsTheClock:
+    """The countdown used to subtract one second per tick, so every late tick
+    (UI stall, slow callback, sleep) was lost time: about 0.3% slow, frozen
+    across sleep. It now measures real elapsed time."""
+
+    def _running(self, env, monkeypatch, duration=900):
+        scheduled = []
+        monkeypatch.setattr(env["root"], "after",
+                            lambda ms, fn=None, *a: scheduled.append(ms) or "fake-after-id")
+        monkeypatch.setattr(env["root"], "after_cancel", lambda i: None)
+        tw = _add_timer(env)
+        clock = _FakeClock()
+        tw._clock = clock
+        tw.duration_seconds = duration
+        tw.last_valid_display = env["fmt"](duration)
+        tw._do_start()
+        return tw, clock, scheduled
+
+    def test_an_on_time_tick_is_one_second(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch)
+        clock.advance(1.0)
+        tw._tick()
+        assert tw.remaining_seconds == 899
+
+    def test_a_stalled_tick_catches_up_to_the_clock(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch)
+        clock.advance(3.4)                          # the UI thread was busy
+        tw._tick()
+        assert tw.remaining_seconds == 900 - 3      # used to lose 2 seconds
+
+    def test_waking_from_sleep_accounts_for_the_whole_sleep(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch, duration=600)
+        clock.advance(7200)                         # lid closed for two hours
+        tw._tick()
+        assert tw.state == "finished"               # fires on wake, not hours later
+        assert tw.remaining_seconds == 0
+        assert tw.display_var.get() == "Done!"
+
+    def test_sleep_shorter_than_the_timer_just_skips_that_time(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch, duration=900)
+        clock.advance(120)
+        tw._tick()
+        assert tw.state == "running"
+        assert tw.remaining_seconds == 780
+
+    def test_ticks_that_run_a_little_late_do_not_accumulate_drift(self, env, monkeypatch):
+        # Model the scheduler: each callback runs the requested delay + 7 ms late.
+        tw, clock, scheduled = self._running(env, monkeypatch, duration=3600)
+        start = clock.now
+        delay_ms = scheduled[-1]
+        for _ in range(600):
+            clock.advance(delay_ms / 1000 + 0.007)
+            tw._tick()
+            delay_ms = scheduled[-1]
+        elapsed = clock.now - start
+        assert abs((3600 - tw.remaining_seconds) - elapsed) < 1.5   # was ~4 s behind
+
+    def test_next_callback_is_scheduled_for_the_next_whole_second(self, env, monkeypatch):
+        tw, clock, scheduled = self._running(env, monkeypatch)
+        clock.advance(1.04)                         # 40 ms late
+        tw._tick()
+        assert 900 <= scheduled[-1] <= 1000         # shortened to stay on the grid
+
+    def test_a_clock_set_backwards_does_not_crash_or_add_time(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch)
+        clock.advance(-3600)
+        tw._tick()
+        assert tw.remaining_seconds == 899          # one second, never more time
+        assert tw.state == "running"
+
+    def test_restart_resets_the_reference_time(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch)
+        clock.advance(500)
+        tw._do_restart()
+        clock.advance(1.0)
+        tw._tick()
+        assert tw.remaining_seconds == 899          # not 899 - 500
+
+    def test_resume_after_a_long_pause_does_not_count_the_pause(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch)
+        clock.advance(1.0)
+        tw._tick()
+        tw._do_stop()                               # pause
+        clock.advance(3600)                         # paused for an hour
+        tw._do_resume()
+        clock.advance(1.0)
+        tw._tick()
+        assert tw.state == "running"
+        assert tw.remaining_seconds == 898
+
+    def test_editing_a_running_timer_resets_the_reference_time(self, env, monkeypatch):
+        tw, clock, _ = self._running(env, monkeypatch)
+        clock.advance(40)
+        tw._on_countdown_click()
+        tw.edit_var.set("5:00")
+        tw._commit_countdown()
+        clock.advance(1.0)
+        tw._tick()
+        assert tw.remaining_seconds == 299
+
+    def test_ticks_with_no_elapsed_time_still_count_one_second_each(self, env, monkeypatch):
+        # Keeps every hand-driven _tick() test in this suite valid.
+        tw, clock, _ = self._running(env, monkeypatch)
+        for _ in range(10):
+            tw._tick()
+        assert tw.remaining_seconds == 890
+
+
+# ---------------------------------------------------------------------------
 # _save_settings — the actual on-disk persistence. Uses its own namespace
 # with the real function exec'd in (every other suite above keeps the
 # shared no-op stub, to isolate what they're each actually testing).
@@ -825,6 +1194,7 @@ def _build_save_settings_namespace(ns, settings_path):
     ns["json"] = __import__("json")
     ns["os"] = __import__("os")
     ns["sys"] = __import__("sys")
+    ns["threading"] = __import__("threading")
     exec(helpers_src, ns)
     exec(save_src, ns)
     return ns
